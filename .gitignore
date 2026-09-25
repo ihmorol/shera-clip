@@ -1,0 +1,38 @@
+# Installed agent tools and local runtime state
+.agents/skills/
+.codegraph/
+.codex/
+.omx/state/
+.omx/logs/
+.scratch/
+.impeccable/review/
+
+# Credentials and local application state
+.env
+.env.*
+!.env.example
+data/
+jobs/
+output/
+output_clips/
+tmp/
+*.sqlite
+*.sqlite3
+*.db
+
+# Class media, transcripts, and export packages
+*.mp4
+*.mov
+*.m4a
+*.wav
+*.mp3
+*.vtt
+*.srt
+*.zip
+
+# Runtime caches
+__pycache__/
+.pytest_cache/
+node_modules/
+dist/
+build/
