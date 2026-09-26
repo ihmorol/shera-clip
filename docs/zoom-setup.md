@@ -1,6 +1,6 @@
 # Zoom cloud recording setup
 
-This is a future operator checklist. The owner chose to configure Zoom access when implementation reaches import testing. No credentials are needed to maintain the specification.
+This is a future operator checklist. The owner chose to configure Zoom access when implementation reaches phase 2; the phase-1 prototype uses local MP4/VTT import (D15). No credentials are needed to maintain the specification.
 
 ## Account prerequisites
 
