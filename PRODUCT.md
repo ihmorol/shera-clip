@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-Pending the owner's stack preference. The product is a browser interface served from the operator's laptop; no framework has been selected or implemented.
+Python 3.12+, FastAPI, SQLite, and the FFmpeg CLI, with server-rendered pages and small vanilla JS modules (D16). The browser interface is served from the operator's laptop on `127.0.0.1`.
 
 ## Users
 

@@ -20,6 +20,10 @@
 | D13 | The one-class prototype is distinct from publish-ready. Publish-ready requires three classes, 60 independent human labels, at least 7 worthwhile held-out top-ten suggestions, 3 approved held-out clips, media checks, and user-assisted private platform previews. |
 | D14 | Agents may choose routine implementation details. Changes to product scope, quality rules, UI wording/layout, external spend, or acceptance criteria require owner decision. |
 | D15 | 2026-09-26, [#6](https://github.com/ihmorol/shera-clip/issues/6): Build local MP4/VTT import first; the phase-1 working prototype does not need Zoom credentials. Zoom API listing and import follow in phase 2. Gate A1 still requires Zoom API import before publish-ready. |
+| D16 | 2026-09-27, [#7](https://github.com/ihmorol/shera-clip/issues/7), owner delegated the choice: Python + FastAPI + SQLite + FFmpeg CLI, server-rendered pages with small vanilla JS modules. Move the review screen to a Vite + TypeScript frontend only if the plain editor becomes hard to maintain. |
+| D17 | 2026-09-27, [#8](https://github.com/ihmorol/shera-clip/issues/8), owner delegated the choice: candidates are deterministic windows of whole transcript units (15–60 s, overlapping starts). Jev scores each window. Times come only from the transcript. Overlapping candidates are suppressed after ranking. The normal shortlist holds at most ten candidates with value ≥ 2 and clarity ≥ 2; others stay visible outside it, so a weak class can yield zero. Model-proposed spans are deferred until calibration labels show boundary problems. |
+| D18 | 2026-09-27, [#9](https://github.com/ihmorol/shera-clip/issues/9), owner delegated an interim choice: each clip offers a scaled full frame (default) or an operator-set crop box with an optional repositioned teacher inset. The operator picks per clip from the phone-size preview. The real-recording phone readability check remains open under gate A5. |
+| D19 | 2026-09-27: The paid transcription fallback uses OpenAI `whisper-1` with segment timestamps, the only OpenAI transcription model that returns timestamps (checked 2026-09-27). Posting drafts use a configurable OpenRouter text model. Recheck prices at implementation time; the USD 1.50 cap is enforced from recorded provider cost. |
 
 ## Inputs pending, not permission to guess
 
@@ -27,7 +31,7 @@
 - Three representative, consent-cleared classes and human labels are needed for quality proof. They are not in this repository. Keep actual media, VTT, labels containing personal information, and exports out of Git.
 - OpenRouter and paid transcription credentials are needed for authenticated tests. Never request secrets in an issue or chat transcript and never commit them.
 - Rimons IELTS logo, handle, URLs, and example posts may be supplied later. If absent, omit video marks and specific links.
-- A precise framework/stack choice and durable visual identity are recorded in `PRODUCT.md` and the UI theme record when settled. Their absence does not alter the product contract.
+- A durable visual identity is recorded in `PRODUCT.md` and the UI theme record when settled ([#5](https://github.com/ihmorol/shera-clip/issues/5)). Its absence does not alter the product contract.
 
 ## How decisions change
 
