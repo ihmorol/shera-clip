@@ -19,6 +19,12 @@ def job_dir(job_id):
     return config.JOBS / job_id
 
 
+def media_path(job_id):
+    """What every later step reads: the video with the Zoom audio lined up (media.mp4), else the copied source."""
+    d = job_dir(job_id)
+    return d / "media.mp4" if (d / "media.mp4").exists() else d / "source.mp4"
+
+
 def _read(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -29,11 +35,12 @@ def _write(path, data):
     tmp.replace(path)
 
 
-def start_job(src_mp4, vtt=None):
+def start_job(src_mp4, vtt=None, audio=None):
+    """audio: optional separate recording of the class sound (Zoom M4A); it replaces the video's own audio."""
     job_id = uuid.uuid4().hex[:12]
-    db.x("INSERT INTO jobs(id, created, title, source_path, vtt_path, stage, status, progress, flags) "
-         "VALUES (?, ?, ?, ?, ?, 'import', 'running', 0, '[]')",
-         job_id, time.time(), Path(src_mp4).stem, str(src_mp4), str(vtt) if vtt else None)
+    db.x("INSERT INTO jobs(id, created, title, source_path, vtt_path, audio_path, stage, status, progress, flags) "
+         "VALUES (?, ?, ?, ?, ?, ?, 'import', 'running', 0, '[]')",
+         job_id, time.time(), Path(src_mp4).stem, str(src_mp4), str(vtt) if vtt else None, str(audio) if audio else None)
     _spawn(job_id)
     return job_id
 
@@ -95,15 +102,41 @@ def _import(job_id):
         p = media.probe(src)
         if not p.get("vcodec") or not p.get("width"):
             raise ValueError("The file has no readable video stream. Pick the Zoom MP4 recording.")
-        if not p.get("has_audio"):
-            raise ValueError("The recording has no audio track. Pick the MP4 that includes the class audio.")
+        if not p.get("has_audio") and not job["audio_path"]:
+            raise ValueError("The recording has no audio track. Pick the MP4 that includes the class audio, "
+                             "or add the class's Zoom audio (.m4a).")
         db.update_job(job_id, duration=p["duration"], width=p["width"], height=p["height"])
+        job = db.get_job(job_id)
+    if job["audio_path"] and not (d / "media.mp4").exists():
+        _attach_audio(job_id, job, d)
+
+
+def _attach_audio(job_id, job, d):
+    """Line the Zoom M4A up with the video and stream-copy both into media.mp4 (audio samples untouched)."""
+    zoom = d / "zoom.m4a"
+    if not zoom.exists():
+        shutil.copyfile(job["audio_path"], zoom)
+    a = media.probe(zoom)
+    if not a.get("has_audio"):
+        raise ValueError("The .m4a file has no audio stream. Pick the Zoom audio recording of this class.")
+    offset, how = media.sync_offset(d / "source.mp4", zoom)
+    covered = min(job["duration"], a["duration"] - offset) - max(0.0, -offset)
+    if covered < 0.5 * job["duration"]:
+        raise ValueError(f"The Zoom audio covers only {max(covered, 0) / 60:.0f} of {job['duration'] / 60:.0f} min "
+                         "of this video. Check that the .m4a is from the same class.")
+    media.mux_audio(d / "source.mp4", zoom, offset, d / "media.mp4")
+    note = {"sound": f"Zoom audio lined up by matching sound ({offset:+.2f} s)",
+            "clock": f"Zoom audio lined up by recording clocks ({offset:+.0f} s, about 1 s accuracy): check lip sync",
+            "none": "Zoom audio could not be lined up automatically; assumed it starts with the video: check sync"}[how]
+    flags = job["flags"] + [note] + ([f"Zoom audio covers {covered / 60:.0f} of {job['duration'] / 60:.0f} min"]
+                                     if covered < job["duration"] - 1 else [])
+    db.update_job(job_id, audio_offset=offset, flags=flags)
 
 
 def _speech(job_id):
     path = job_dir(job_id) / "speech.json"
     if not path.exists():
-        _write(path, media.speech_intervals(job_dir(job_id) / "source.mp4"))
+        _write(path, media.speech_intervals(media_path(job_id)))
     return [tuple(x) for x in _read(path)]
 
 
@@ -113,8 +146,8 @@ def check_audible(speech, duration):
     heard = sum(e - s for s, e in speech)
     if heard < min(60, 0.05 * duration):
         raise ValueError(f"The recording's audio is silent ({heard:.0f} s of sound in {duration / 60:.0f} min), "
-                         "so there is nothing to transcribe. Check that the MP4 has the class audio; "
-                         "no paid call was made.")
+                         "so there is nothing to transcribe. Import it again with the class's Zoom audio (.m4a), "
+                         "or pick the MP4 that has the sound. No paid call was made.")
 
 
 def _transcript(job_id):
@@ -123,16 +156,17 @@ def _transcript(job_id):
         return
     db.update_job(job_id, stage="transcript")
     check_audible(_speech(job_id), job["duration"])
+    keep = [f for f in job["flags"] if f.startswith("Zoom audio")]  # import notes outlive transcript checks
     if not (d / "source.vtt").exists():
-        db.update_job(job_id, flags=["no VTT transcript; paid transcription needed"])
+        db.update_job(job_id, flags=keep + ["no VTT transcript; paid transcription needed"])
         return
     units = transcript.parse_vtt((d / "source.vtt").read_text(encoding="utf-8-sig"))
     flags = transcript.check_alignment(units, _speech(job_id), job["duration"])
     if flags:
-        db.update_job(job_id, flags=flags + ["VTT unusable; paid transcription needed"])
+        db.update_job(job_id, flags=keep + flags + ["VTT unusable; paid transcription needed"])
         return
     _write(d / "transcript.json", {"source": "local_vtt", "units": units, "flags": []})
-    db.update_job(job_id, transcript_source="local_vtt", flags=[])
+    db.update_job(job_id, transcript_source="local_vtt", flags=keep)
 
 
 def _units(job_id):
@@ -163,7 +197,7 @@ def _transcribe(job_id):
     if (d / "transcript.json").exists():
         return
     db.update_job(job_id, stage="transcribe", progress=0)
-    chunks = media.audio_chunks(d / "source.mp4", d / "audio", _speech(job_id))
+    chunks = media.audio_chunks(media_path(job_id), d / "audio", _speech(job_id))
     results = []
     for i, (path, offset) in enumerate(chunks):
         end = chunks[i + 1][1] if i + 1 < len(chunks) else job["duration"]
@@ -236,10 +270,13 @@ def draft(cid):
     except ledger.ProviderError as e:
         d = {"error": str(e)}
     with db.LOCK:
-        current = db.review(cid)["drafts"]
-        if not drafts_open(current):
-            return current
-        db.update_review(cid, drafts=d)
+        rv = db.review(cid)
+        if not drafts_open(rv["drafts"]):
+            return rv["drafts"]
+        fields = {"drafts": d}
+        if "error" not in d and not rv["title"] and rv["status"] == "pending":  # a clip needs a title to make sense
+            fields["title"] = (d["youtube"]["title"] or d["facebook"]["title"]).strip()
+        db.update_review(cid, **fields)
     return d
 
 
@@ -295,7 +332,7 @@ def render_preview(cid):
     rv, c = ensure_review(cid), db.candidate(cid)
     out = job_dir(c["job_id"]) / "previews" / f"{cid}-{state_hash(rv)}.mp4"
     out.parent.mkdir(parents=True, exist_ok=True)
-    _render_both(job_dir(c["job_id"]) / "source.mp4", rv, out, landscape_path(out))
+    _render_both(media_path(c["job_id"]), rv, out, landscape_path(out))
     db.update_review(cid, preview_path=str(out))
     keep = {out, landscape_path(out)}
     for old in out.parent.glob(f"{cid}-*.mp4"):
@@ -334,7 +371,7 @@ def export(job_id):
         folder = tmp / f"{c['rank'] or 0:02d}-{c['id']}"
         folder.mkdir(parents=True)
         video = folder / "portrait.mp4"
-        _render_both(job_dir(job_id) / "source.mp4", rv, video, folder / "landscape.mp4", preset="medium")
+        _render_both(media_path(job_id), rv, video, folder / "landscape.mp4", preset="medium")
         (folder / "captions.srt").write_text(srt(rv["captions"] or []), encoding="utf-8")
         media.thumbnail(video, folder / "thumbnail.jpg", (rv["end"] - rv["start"]) / 2)
         dur = rv["end"] - rv["start"]

@@ -231,3 +231,30 @@ def test_unscored_category_shows_choose_option(client):
     assert '<option value="" selected>Choose…</option>' in html
     client.post(f"/jobs/{job_id}/clips/{cid}", json={"category": "", "title": "t"})
     assert db.review(cid)["category"] is None
+
+
+def test_clip_list_and_bench_explain_why_each_clip_was_picked(client):
+    job_id, cid = make_job()
+    db.x('INSERT INTO candidates(job_id, u0, u1, start, "end", text, value, clarity, opening, category, score, '
+         "shortlisted, rank) VALUES (?, 3, 9, 20, 50, 'Overlapping moment. More.', 3, 1, 2, 'vocabulary', 0.5, 0, NULL)", job_id)
+    html = client.get(f"/jobs/{job_id}").text
+    assert "Exam tip · a clear teaching point · mostly stands alone · plain start" in html
+    assert "Left out: leans on earlier context" in html
+    review = client.get(f"/jobs/{job_id}/clips/{cid}").text
+    assert "Why the AI picked it" in review and "Clear value: a specific, correct, useful teaching point." in review
+    assert "Check before approving" in review and "Scores (0–4)" not in review
+
+
+def test_import_takes_zoom_audio_and_browse_lists_by_type(client, tmp_path, monkeypatch):
+    mp4, m4a = tmp_path / "class.mp4", tmp_path / "audio1.m4a"
+    mp4.write_bytes(b"x")
+    m4a.write_bytes(b"x")
+    started = []
+    monkeypatch.setattr(pipeline, "start_job", lambda *a: started.append(a) or "j9")
+    r = client.post("/import", data={"mp4": str(mp4), "m4a": str(tmp_path / "nope.m4a")})
+    assert r.status_code == 400 and "Zoom audio not found" in r.text
+    r = client.post("/import", data={"mp4": str(mp4), "m4a": str(m4a)}, follow_redirects=False)
+    assert r.status_code == 303 and started == [(mp4, None, m4a)]
+    names = [f["name"] for f in client.get("/browse", params={"path": str(tmp_path), "ext": ".m4a"}).json()["files"]]
+    assert names == ["audio1.m4a"]
+    assert client.get("/browse", params={"path": str(tmp_path), "ext": ".exe"}).status_code == 422

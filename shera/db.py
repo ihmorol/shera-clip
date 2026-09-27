@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS jobs(
   id TEXT PRIMARY KEY, created REAL, title TEXT, source_path TEXT, source_sha256 TEXT,
   source_bytes INTEGER, duration REAL, width INTEGER, height INTEGER, vtt_path TEXT,
   stage TEXT, status TEXT, progress REAL, error TEXT, authorized_usd REAL, estimate_usd REAL,
-  transcript_source TEXT, flags TEXT DEFAULT '[]');
+  transcript_source TEXT, flags TEXT DEFAULT '[]', audio_path TEXT, audio_offset REAL);
 CREATE TABLE IF NOT EXISTS candidates(
   id INTEGER PRIMARY KEY, job_id TEXT, u0 INTEGER, u1 INTEGER, start REAL, "end" REAL,
   text TEXT, value INTEGER, clarity INTEGER, opening INTEGER, category TEXT, score REAL,
@@ -43,6 +43,10 @@ def connect():
             _conn.row_factory = sqlite3.Row
             _conn.execute("PRAGMA journal_mode=WAL")
             _conn.executescript(SCHEMA)
+            have = {r[1] for r in _conn.execute("PRAGMA table_info(jobs)")}
+            for col, kind in (("audio_path", "TEXT"), ("audio_offset", "REAL")):  # databases made before these columns
+                if col not in have:
+                    _conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {kind}")
             _path = config.DB_PATH
         return _conn
 

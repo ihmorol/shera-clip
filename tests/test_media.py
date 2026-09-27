@@ -144,3 +144,29 @@ def test_inset_never_overlaps_content(crop, inset):
 def test_verify_reports_wrong_file(main):
     probs = media.verify(main, 3)
     assert any("size" in p for p in probs) and any("duration" in p for p in probs)
+
+
+def _zoom_audio(path, dur, tones, shift, created=None):
+    """A separate class-audio recording (like Zoom's M4A): the same tones, `shift` s later on its own clock."""
+    cond = "+".join(f"between(t,{a + shift},{b + shift})" for a, b in tones)
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", f"aevalsrc='if({cond},0.5*sin(2*PI*440*t),0)':s=48000:d={dur}",
+                    "-c:a", "aac", *(["-metadata", f"creation_time={created}"] if created else []), str(path)], check=True)
+    return path
+
+
+def test_zoom_audio_lined_up_by_sound_and_copied_untouched(main, tmp_path):
+    zoom = _zoom_audio(tmp_path / "zoom.m4a", 80, MAIN_TONES, 2.5)
+    offset, how = media.sync_offset(main, zoom)
+    assert how == "sound" and abs(offset - 2.5) < 0.05
+    out = media.mux_audio(main, zoom, offset, tmp_path / "media.mp4")
+    assert _audio(out) == _audio(zoom)  # stream-copied, not re-encoded
+    _close(media.speech_intervals(out), MAIN_TONES)  # the Zoom sound now lands on the video's timeline
+    assert abs(media.probe(out)["duration"] - 60) < 0.2
+
+
+def test_zoom_audio_for_a_silent_video_uses_recording_clocks(tmp_path):
+    silent = _make(tmp_path / "obs.mp4", 30, [(0, 0)], extra_out=("-metadata", "creation_time=2026-07-14T05:32:06Z"))
+    zoom = _zoom_audio(tmp_path / "zoom.m4a", 60, [(2, 8)], 10, created="2026-07-14T05:31:56Z")
+    assert media.sync_offset(silent, zoom) == (10.0, "clock")
+    zoom2 = _zoom_audio(tmp_path / "zoom2.m4a", 60, [(2, 8)], 0)  # no clock on the audio: assume they start together
+    assert media.sync_offset(silent, zoom2) == (0.0, "none")
