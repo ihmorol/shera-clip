@@ -27,7 +27,7 @@ Requirements:
 pip install -e .
 ```
 
-Copy `.env.example` to `.env` and fill in `OPENROUTER_API_KEY`, which ranking and posting drafts need. Also fill in `OPENAI_API_KEY`, which is needed only when the class has no usable VTT.
+Copy `.env.example` to `.env` and fill in `OPENROUTER_API_KEY`. That one key covers ranking (Jev), posting drafts, and speech-to-text when the class has no usable VTT.
 
 ```bash
 python -m shera

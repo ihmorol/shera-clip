@@ -17,7 +17,6 @@ def fake_post(payload, status=200):
 @pytest.fixture(autouse=True)
 def keys(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "k-test")
-    monkeypatch.setenv("OPENAI_API_KEY", "k-test")
 
 
 def jev_answer(**over):
@@ -60,3 +59,21 @@ def test_missing_key(monkeypatch):
     monkeypatch.setattr(config, "openrouter_key", lambda: None)
     with pytest.raises(ProviderError, match="OPENROUTER_API_KEY"):
         providers.jev_score("x")
+
+
+def test_transcribe_uses_openrouter_and_falls_back_on_400(monkeypatch, tmp_path):
+    audio = tmp_path / "a.mp3"
+    audio.write_bytes(b"x")
+    seen = []
+
+    def post(url, **kw):
+        seen.append((url, kw["data"]["model"], kw["headers"]["Authorization"]))
+        if kw["data"]["model"] == config.STT_MODEL:
+            return httpx.Response(400, json={"error": "timestamps unsupported"}, request=httpx.Request("POST", url))
+        return httpx.Response(200, json={"segments": [{"start": 0, "end": 1, "text": "hi"}], "duration": 60,
+                                         "usage": {"cost": 0.004}}, request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx, "post", post)
+    data, cost = providers.transcribe(audio)
+    assert [s[0] for s in seen] == [providers.STT_URL] * 2 and "openrouter.ai" in providers.STT_URL
+    assert [s[1] for s in seen] == [config.STT_MODEL, "openai/whisper-1"]
+    assert seen[0][2] == "Bearer k-test" and data["model"] == "openai/whisper-1" and cost == 0.004

@@ -1,4 +1,4 @@
-"""Transcript units from VTT or whisper-1 output. Text is kept exactly as spoken; never translated."""
+"""Transcript units from VTT or Whisper (verbose_json) output. Text is kept exactly as spoken; never translated."""
 import html
 import re
 

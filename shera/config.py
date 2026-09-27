@@ -33,14 +33,13 @@ def openrouter_key():
     return os.environ.get("OPENROUTER_API_KEY") or None
 
 
-def openai_key():
-    return os.environ.get("OPENAI_API_KEY") or None
-
-
 CAP_USD = 1.50
 WEIGHTS = (0.45, 0.35, 0.20)
 # Estimates only; the ledger records actual provider cost when the response reports it.
-WHISPER_USD_PER_MIN = float(os.environ.get("SHERA_WHISPER_USD_PER_MIN", 0.006))
+STT_USD_PER_MIN = float(os.environ.get("SHERA_STT_USD_PER_MIN", 0.006))
+# Speech-to-text through OpenRouter; whisper-1 is the fallback when a provider rejects timestamps.
+STT_MODEL = os.environ.get("SHERA_STT_MODEL") or "openai/whisper-large-v3"
+STT_FALLBACK_MODEL = "openai/whisper-1"
 JEV_EST_USD = float(os.environ.get("SHERA_JEV_EST_USD", 0.002))
 DRAFT_EST_USD = float(os.environ.get("SHERA_DRAFT_EST_USD", 0.002))
 DRAFT_MODEL = os.environ.get("SHERA_DRAFT_MODEL") or "openai/gpt-4o-mini"

@@ -9,7 +9,7 @@ from shera.ledger import ProviderError
 
 JEV_URL = "https://openrouter.ai/api/alpha/decisions"
 CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
-WHISPER_URL = "https://api.openai.com/v1/audio/transcriptions"
+STT_URL = "https://openrouter.ai/api/v1/audio/transcriptions"
 CATEGORIES = {
     "exam_tip": "A tip or strategy for the IELTS exam itself.",
     "worked_example": "The teacher works through a concrete example or sample answer.",
@@ -88,19 +88,31 @@ def jev_score(excerpt):
     return out, cost
 
 
-def whisper(path):
-    key = _key("OPENAI_API_KEY", config.openai_key())
-    path = Path(path)
+def _stt(path, model):
+    key = _key("OPENROUTER_API_KEY", config.openrouter_key())
     with path.open("rb") as f:
-        r = httpx.post(WHISPER_URL, headers={"Authorization": f"Bearer {key}"},
-                       data={"model": "whisper-1", "response_format": "verbose_json",
-                             "timestamp_granularities[]": "segment"},
-                       files={"file": (path.name, f, "audio/mpeg")}, timeout=600)
+        return httpx.post(STT_URL, headers={"Authorization": f"Bearer {key}"},
+                          data={"model": model, "response_format": "verbose_json",
+                                "timestamp_granularities[]": "segment"},
+                          files={"file": (path.name, f, "audio/mpeg")}, timeout=600)
+
+
+def transcribe(path):
+    """Timestamped speech-to-text via OpenRouter. A 400 (provider rejects timestamps; not billed)
+    is retried once with whisper-1, whose provider supports them."""
+    path, model = Path(path), config.STT_MODEL
+    r = _stt(path, model)
+    if r.status_code == 400 and model != config.STT_FALLBACK_MODEL:
+        model = config.STT_FALLBACK_MODEL
+        r = _stt(path, model)
     r.raise_for_status()
     data = r.json()
     if not isinstance(data.get("segments"), list):
-        raise ProviderError("whisper-1: response has no segments", billed=True)
-    return data, data.get("duration", 0) / 60 * config.WHISPER_USD_PER_MIN
+        raise ProviderError(f"{model}: response has no timestamped segments", billed=True,
+                            cost=(data.get("usage") or {}).get("cost"))
+    data["model"] = model
+    cost = (data.get("usage") or {}).get("cost")
+    return data, cost if cost is not None else data.get("duration", 0) / 60 * config.STT_USD_PER_MIN
 
 
 def draft_post(excerpt, category):
