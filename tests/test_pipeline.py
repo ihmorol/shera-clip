@@ -327,3 +327,22 @@ def test_find_clips_again_starts_over_and_asks_for_cost_again(env):
     assert (job["stage"], job["status"], job["authorized_usd"]) == ("authorize", "waiting", None)
     assert not db.q("SELECT candidate_id FROM reviews WHERE candidate_id=?", cid) and not db.candidates(jid)
     assert not (pipeline.job_dir(jid) / "previews").exists() and ledger.spent(jid) > 0  # earlier spend still counts
+
+
+def test_skipped_translation_lines_are_asked_again_then_kept_as_spoken(env, monkeypatch):
+    src, vtt, calls = env
+    bn = "আজকে আমরা Task 2 নিয়ে কথা বলব"
+    vtt.write_text(vtt_text().replace("Rimon Ahmed: In Task 2", f"Rimon Ahmed: {bn} In Task 2", 3), encoding="utf-8")
+    asked = []
+
+    def skips_the_last(lines):
+        asked.append(len(lines))
+        return {"en": [f"EN {n}" for n in range(len(lines) - 1)] + [None]}, 0.001
+    monkeypatch.setattr(providers, "translate", skips_the_last)
+    jid = pipeline.start_job(src, vtt)
+    pipeline.authorize(jid)
+    job = db.get_job(jid)
+    assert job["status"] == "done", job["error"]
+    assert asked == [3, 1]  # the skipped line is asked again once, alone
+    units = json.loads((pipeline.job_dir(jid) / "transcript.json").read_text(encoding="utf-8"))["units"]
+    assert units[2]["en"] == units[2]["text"] and "1 lines left untranslated" in " ".join(job["flags"])

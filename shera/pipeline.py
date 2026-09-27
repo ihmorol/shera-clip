@@ -215,7 +215,7 @@ def _transcribe(job_id):
 
 
 BANGLA = re.compile("[ঀ-৿]")
-TRANSLATE_BATCH = 60
+TRANSLATE_BATCH = 50
 
 
 def _translate(job_id):
@@ -223,23 +223,32 @@ def _translate(job_id):
     d = job_dir(job_id)
     data = _read(d / "transcript.json")
     units = data["units"]
-    todo = [i for i, u in enumerate(units) if "en" not in u and BANGLA.search(u["text"])]
     for u in units:
         if "en" not in u and not BANGLA.search(u["text"]):
             u["en"] = u["text"]
-    if todo:
+    for attempt in range(2):  # a line the model skips is asked again once, in a new batch
+        todo = [i for i, u in enumerate(units) if "en" not in u]
+        if not todo:
+            break
         db.update_job(job_id, stage="translate", progress=0)
-    batches = [todo[k:k + TRANSLATE_BATCH] for k in range(0, len(todo), TRANSLATE_BATCH)]
-    for n, batch in enumerate(batches):
-        lines = [units[i]["text"] for i in batch]
-        key = "tr:" + hashlib.sha1("\n".join(lines).encode()).hexdigest()[:16]
-        est = sum(units[i]["end"] - units[i]["start"] for i in batch) / 60 * config.TRANSLATE_USD_PER_MIN * 3
-        r = ledger.call(job_id, key, "translate", est, lambda lines=lines: providers.translate(lines))
-        for i, en in zip(batch, r["en"]):
-            units[i]["en"] = en
-        _write(d / "transcript.json", data)  # keep finished batches if a later one stops
-        db.update_job(job_id, progress=(n + 1) / len(batches))
+        batches = [todo[k:k + TRANSLATE_BATCH] for k in range(0, len(todo), TRANSLATE_BATCH)]
+        for n, batch in enumerate(batches):
+            lines = [units[i]["text"] for i in batch]
+            key = "tr2:" + hashlib.sha1("\n".join(lines).encode()).hexdigest()[:16]
+            est = sum(units[i]["end"] - units[i]["start"] for i in batch) / 60 * config.TRANSLATE_USD_PER_MIN * 3
+            r = ledger.call(job_id, key, "translate", est, lambda lines=lines: providers.translate(lines))
+            for i, en in zip(batch, r["en"]):
+                if en:
+                    units[i]["en"] = en
+            _write(d / "transcript.json", data)  # keep finished batches if a later one stops
+            db.update_job(job_id, progress=(n + 1) / len(batches))
+    left = [u for u in units if "en" not in u]
+    for u in left:  # still unanswered after two asks: keep the words as spoken rather than stall the class
+        u["en"] = u["text"]
     _write(d / "transcript.json", data)
+    if left:
+        job = db.get_job(job_id)
+        db.update_job(job_id, flags=job["flags"] + [f"{len(left)} lines left untranslated (the translator skipped them twice)"])
 
 
 def _join(units, key):
