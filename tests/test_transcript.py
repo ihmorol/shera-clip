@@ -68,3 +68,13 @@ def test_check_alignment():
     assert any("no speech" in f for f in flags)
     assert any("after the recording" in f for f in check_alignment(units, [(0, 150)], 100))
     assert any("only 5" in f for f in check_alignment(units[:5], [(0, 150)], 150))
+
+
+def test_word_timestamps_become_sentence_lines():
+    words = [{"word": w, "start": s, "end": s + 0.4} for w, s in
+             [("আজকে", 0.0), ("আমরা", 0.5), ("Task", 1.0), ("2", 1.4), ("পড়ব।", 1.8),
+              ("Paraphrase", 2.4), ("the", 2.9), ("question", 3.3), ("first", 5.0)]]  # 1.3 s pause before "first"
+    units, flags = units_from_whisper([(100.0, {"segments": [{"start": 0, "end": 6, "text": "one long language segment"}],
+                                                "words": words})])
+    assert [u["text"] for u in units] == ["আজকে আমরা Task 2 পড়ব।", "Paraphrase the question", "first"]
+    assert units[0]["start"] == 100.0 and units[1]["end"] == 103.7 and not flags

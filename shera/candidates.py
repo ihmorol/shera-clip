@@ -1,8 +1,11 @@
-"""Deterministic candidate windows over whole transcript units (D17)."""
+"""Deterministic candidate windows over whole transcript units (D17, D24)."""
+import re
+
 from shera import config
 
 
-def build_windows(units, min_s=15, target_s=35, max_s=60, stride_s=20):
+def build_windows(units, min_s=None, target_s=None, max_s=None, stride_s=30):
+    min_s, target_s, max_s = (min_s or config.CLIP_MIN_S, target_s or config.CLIP_TARGET_S, max_s or config.CLIP_MAX_S)
     wins, last = [], None
     for i, u in enumerate(units):
         if last is not None and u["start"] < last + stride_s:
@@ -18,27 +21,75 @@ def build_windows(units, min_s=15, target_s=35, max_s=60, stride_s=20):
         window = units[i:j + 1]
         speech = sum(w["end"] - w["start"] for w in window)
         words = sum(len(w["text"].split()) for w in window)
-        if speech / span < 0.5 or words < 20:
+        if speech / span < 0.5 or words < span / 2:  # about 30 words a minute is the floor for real talk
             continue
         wins.append((i, j))
     return wins
 
 
-def rank_score(v, c, o):
-    wv, wc, wo = config.WEIGHTS
-    return wv * v / 4 + wc * c / 4 + wo * o / 4
+def rank_score(v, c, o, postable=None):
+    """0..1. With Jev's "postable" answer (D26), usefulness as a standalone video leads the ranking."""
+    if postable is None:
+        wv, wc, wo = config.WEIGHTS
+        return wv * v / 4 + wc * c / 4 + wo * o / 4
+    return (0.30 * v + 0.20 * c + 0.10 * o + 0.40 * postable) / 4
+
+
+def is_teacher(c):
+    """Jev's answer to "is this the teacher talking, not a played recording?" (older scores lack it)."""
+    return c.get("teacher") is None or c["teacher"] >= 0.5
+
+
+def jev(c, q):
+    """One number from Jev's stored answer (score or yes-probability), or None when not asked."""
+    a = (c.get("jev") or {}).get(q) or {}
+    v = a.get("score", a.get("noul"))
+    return None if v is None else float(v)
+
+
+def blocker(c):
+    """Why Jev's answers rule a scored candidate out, in plain words, or None (mirrors shortlist)."""
+    if (c["value"] or 0) < 2 or (c["clarity"] or 0) < 2:
+        return "low"
+    if not is_teacher(c):
+        return "recording"
+    if (jev(c, "offtopic") or 0) >= 0.5:
+        return "offtopic"
+    if (jev(c, "private") or 0) >= 0.5:
+        return "private"
+    if (jev(c, "postable") if jev(c, "postable") is not None else 4) < 2:
+        return "unpostable"
+    return None
 
 
 def shortlist(cands, n=10):
-    """cands: dicts with id, start, end, value, clarity, score. Returns kept ids in rank order (may be empty)."""
-    ok = [c for c in cands if (c["value"] or 0) >= 2 and (c["clarity"] or 0) >= 2]
+    """cands: dicts with id, start, end, value, clarity, score, and optionally teacher, jev, text_en/text.
+    Keeps teacher talk worth >= 2 on value and clarity that Jev finds postable, on-topic and free of student
+    details, with no big time overlap and no repeated passage (a listening recording played twice).
+    Returns kept ids in rank order (may be empty)."""
+    ok = [c for c in cands if blocker(c) is None]
     kept = []
     for c in sorted(ok, key=lambda c: (-c["score"], c["start"])):
         if len(kept) == n:
             break
-        if all(_overlap(c, k) <= 0.3 * min(c["end"] - c["start"], k["end"] - k["start"]) for k in kept):
+        if (all(_overlap(c, k) <= 0.3 * min(c["end"] - c["start"], k["end"] - k["start"]) for k in kept)
+                and repeat_of(c, kept) is None):
             kept.append(c)
     return [c["id"] for c in kept]
+
+
+def _words(c):
+    return set(re.findall(r"\w+", (c.get("text_en") or c.get("text") or "").lower()))
+
+
+def repeat_of(c, others, threshold=0.6):
+    """The first of `others` whose words mostly match c's (the same passage said or played again), else None."""
+    mine = _words(c)
+    for o in others:
+        theirs = _words(o)
+        if mine and theirs and len(mine & theirs) / len(mine | theirs) >= threshold:
+            return o
+    return None
 
 
 def _overlap(a, b):

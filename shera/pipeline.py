@@ -2,6 +2,7 @@
 import contextlib
 import hashlib
 import json
+import re
 import shutil
 import threading
 import time
@@ -75,7 +76,7 @@ def run(job_id):
         _running.add(job_id)
     try:
         db.update_job(job_id, status="running", error=None)
-        for stage in (_import, _transcript, _authorize, _transcribe, _candidates, _score, _prepare):
+        for stage in (_import, _transcript, _authorize, _transcribe, _translate, _candidates, _score, _prepare):
             if stage(job_id) is False:
                 return  # waiting for the operator
         db.update_job(job_id, stage="review", status="done", progress=1.0)
@@ -177,8 +178,9 @@ def estimate(job_id):
     """Estimate breakdown shown before authorization: USD per paid step plus the window count."""
     job = db.get_job(job_id)
     has_t = (job_dir(job_id) / "transcript.json").exists()
-    windows = len(cand.build_windows(_units(job_id))) if has_t else int(job["duration"] // 20) + 1
+    windows = len(cand.build_windows(_units(job_id))) if has_t else int(job["duration"] // 30) + 1
     return {"transcription": 0.0 if has_t else job["duration"] / 60 * config.STT_USD_PER_MIN,
+            "translation": job["duration"] / 60 * config.TRANSLATE_USD_PER_MIN,
             "ranking": config.JEV_EST_USD * windows, "drafts": config.DRAFT_EST_USD * 10, "windows": windows}
 
 
@@ -187,7 +189,7 @@ def _authorize(job_id):
     if job["authorized_usd"] is not None:
         return
     e = estimate(job_id)
-    est = e["transcription"] + e["ranking"] + e["drafts"]
+    est = e["transcription"] + e["translation"] + e["ranking"] + e["drafts"]
     db.update_job(job_id, stage="authorize", status="waiting", estimate_usd=round(est, 4))
     return False
 
@@ -202,7 +204,8 @@ def _transcribe(job_id):
     for i, (path, offset) in enumerate(chunks):
         end = chunks[i + 1][1] if i + 1 < len(chunks) else job["duration"]
         est = (end - offset) / 60 * config.STT_USD_PER_MIN
-        results.append((offset, ledger.call(job_id, f"stt:{i}", "stt", est,
+        # the key names model and start, so a new model or chunking after "find clips again" is a new call
+        results.append((offset, ledger.call(job_id, f"stt:{config.STT_MODEL}:{offset:.1f}", "stt", est,
                                             lambda p=path: providers.transcribe(p))))
         db.update_job(job_id, progress=(i + 1) / len(chunks))
     units, flags = transcript.units_from_whisper(results)
@@ -211,17 +214,49 @@ def _transcribe(job_id):
     db.update_job(job_id, transcript_source=source, flags=job["flags"] + flags)
 
 
+BANGLA = re.compile("[ঀ-৿]")
+TRANSLATE_BATCH = 60
+
+
+def _translate(job_id):
+    """Paid English translation of every line that is not already English; the words as spoken stay in `text`."""
+    d = job_dir(job_id)
+    data = _read(d / "transcript.json")
+    units = data["units"]
+    todo = [i for i, u in enumerate(units) if "en" not in u and BANGLA.search(u["text"])]
+    for u in units:
+        if "en" not in u and not BANGLA.search(u["text"]):
+            u["en"] = u["text"]
+    if todo:
+        db.update_job(job_id, stage="translate", progress=0)
+    batches = [todo[k:k + TRANSLATE_BATCH] for k in range(0, len(todo), TRANSLATE_BATCH)]
+    for n, batch in enumerate(batches):
+        lines = [units[i]["text"] for i in batch]
+        key = "tr:" + hashlib.sha1("\n".join(lines).encode()).hexdigest()[:16]
+        est = sum(units[i]["end"] - units[i]["start"] for i in batch) / 60 * config.TRANSLATE_USD_PER_MIN * 3
+        r = ledger.call(job_id, key, "translate", est, lambda lines=lines: providers.translate(lines))
+        for i, en in zip(batch, r["en"]):
+            units[i]["en"] = en
+        _write(d / "transcript.json", data)  # keep finished batches if a later one stops
+        db.update_job(job_id, progress=(n + 1) / len(batches))
+    _write(d / "transcript.json", data)
+
+
+def _join(units, key):
+    return " ".join(u.get(key) or u["text"] for u in units)
+
+
 def _candidates(job_id):
     if db.candidates(job_id):
         return
     db.update_job(job_id, stage="candidates")
     units = _units(job_id)
-    rows = [(job_id, u0, u1, units[u0]["start"], units[u1]["end"], " ".join(u["text"] for u in units[u0:u1 + 1]))
-            for u0, u1 in cand.build_windows(units)]
+    rows = [(job_id, u0, u1, units[u0]["start"], units[u1]["end"], _join(units[u0:u1 + 1], "text"),
+             _join(units[u0:u1 + 1], "en")) for u0, u1 in cand.build_windows(units)]
     with db.LOCK:  # all rows or none
         c = db.connect()
         c.execute("BEGIN")
-        c.executemany('INSERT INTO candidates(job_id, u0, u1, start, "end", text) VALUES (?, ?, ?, ?, ?, ?)', rows)
+        c.executemany('INSERT INTO candidates(job_id, u0, u1, start, "end", text, text_en) VALUES (?, ?, ?, ?, ?, ?, ?)', rows)
         c.execute("COMMIT")
 
 
@@ -230,11 +265,12 @@ def _score(job_id):
     cands = db.candidates(job_id)
     for n, c in enumerate(cands):
         if c["score"] is None:
-            r = ledger.call(job_id, f"jev:{c['id']}", "jev", config.JEV_EST_USD,
-                            lambda c=c: providers.jev_score(c["text"]))
-            db.x("UPDATE candidates SET value=?, clarity=?, opening=?, category=?, score=? WHERE id=?",
-                 r["value"], r["clarity"], r["opening"], r["category"],
-                 cand.rank_score(r["value"], r["clarity"], r["opening"]), c["id"])
+            r = ledger.call(job_id, f"jev2:{c['id']}", "jev", config.JEV_EST_USD,
+                            lambda c=c: providers.jev_score(c["text_en"] or c["text"], c["text"]))
+            db.x("UPDATE candidates SET value=?, clarity=?, opening=?, category=?, score=?, teacher=?, complete=?, "
+                 "jev=? WHERE id=?", r["value"], r["clarity"], r["opening"], r["category"],
+                 cand.rank_score(r["value"], r["clarity"], r["opening"], r.get("postable")), r["teacher"], r["complete"],
+                 json.dumps(r["raw"], ensure_ascii=False), c["id"])
         db.update_job(job_id, progress=(n + 1) / len(cands))
     ids = cand.shortlist(db.candidates(job_id))
     db.x("UPDATE candidates SET shortlisted=0, rank=NULL WHERE job_id=?", job_id)
@@ -247,6 +283,10 @@ def ensure_review(cid):
     rv, c = db.review(cid), db.candidate(cid)
     if rv["category"] is None and c["category"]:  # review opened before scoring
         db.update_review(cid, category=c["category"])
+        rv = db.review(cid)
+    skill = ((c["jev"] or {}).get("skill") or {}).get("choice")
+    if not rv["tags"] and skill and skill != "general":  # Jev's IELTS part is a sensible first tag
+        db.update_review(cid, tags=["IELTS", skill.capitalize()])
         rv = db.review(cid)
     if rv["captions"] is None:
         caps = cand.caption_lines(_units(c["job_id"]), c["u0"], c["u1"], rv["start"], rv["end"])
@@ -266,7 +306,7 @@ def draft(cid):
     c = db.candidate(cid)
     try:
         d = ledger.call(c["job_id"], f"draft:{cid}", "draft", config.DRAFT_EST_USD,
-                        lambda: providers.draft_post(c["text"], c["category"]))
+                        lambda: providers.draft_post(c["text"], c["category"], c["text_en"]))
     except ledger.ProviderError as e:
         d = {"error": str(e)}
     with db.LOCK:
@@ -289,6 +329,25 @@ def _prepare(job_id):
         if drafts_open(rv["drafts"]) and not in_flight:  # an in-flight web draft task owns that call
             draft(c["id"])
         db.update_job(job_id, progress=(n + 1) / len(short))
+
+
+def redo(job_id):
+    """Find clips again from the recording with the current transcription, translation, and clip rules.
+    Keeps the imported media and the paid-call record (earlier spend still counts toward the cap);
+    drops the transcript, candidates, reviews, previews, and exports, then asks for cost approval again."""
+    with _lock:
+        if job_id in _running:
+            raise ValueError("The job is still running; wait for it to pause or finish.")
+    d = job_dir(job_id)
+    db.x("DELETE FROM reviews WHERE candidate_id IN (SELECT id FROM candidates WHERE job_id=?)", job_id)
+    db.x("DELETE FROM candidates WHERE job_id=?", job_id)
+    (d / "transcript.json").unlink(missing_ok=True)
+    for sub in (d / "audio", d / "previews", config.DATA / "exports" / job_id):
+        shutil.rmtree(sub, ignore_errors=True)
+    keep = [f for f in db.get_job(job_id)["flags"] if f.startswith("Zoom audio")]
+    db.update_job(job_id, authorized_usd=None, estimate_usd=None, transcript_source=None,
+                  flags=keep, stage="transcript")
+    resume(job_id)
 
 
 def delete_job(job_id):

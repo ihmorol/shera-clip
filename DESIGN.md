@@ -313,6 +313,18 @@ An 8-frame ordered list printed on `film` stock with sprocket holes along both e
 ### Review Bench (signature)
 A sticky panel titled "Preview and decide" with the review status badge and a live hint line. The portrait 9:16 frame and the landscape 16:9 frame are black letterboxes with 8px corners and 1px borders, captioned with their ratio and destinations ("Shorts, Reels" or "YouTube, Facebook feed"). Before rendering, each frame is an empty film-stock slot with a dashed warm border and a centred `ink-3` note. Under the landscape frame are the one orange action, "Save and render previews" (relabelled "Rendering…", "Render again", or "Render previews" by state), then "Save only", a status line, and a divider above the Approve and Reject pair.
 
+### Class Reel (signature)
+
+The whole class drawn as one strip of `film` with sprocket holes top and bottom. Each suggested clip is a numbered frame at its real position and width: mask orange, leader green when approved, dimmed film when rejected. Moments Jev judged to be a played recording sit behind as a faint `run` wash. A time scale (start, middle, end) in edge-print mono sits underneath, with a small key. Marks are links and lift 2px on hover or focus.
+
+### Contact Sheet (signature)
+
+Suggested clips are a sheet of film frames (`.sheet`, auto-fill columns of at least 17.5rem). Each frame is a real still from the clip inside a perforated `.gate`, with the rank printed in a mask-orange chip top-left (leader green when approved, film brown and a greyscale still when rejected) and the length bottom-right. Under it: the title (the AI draft title, or the opening line in quotes with its English below in `run`), the plain-words reason line, the time span, and the state badge. The frame lifts 3px with a mask ring on hover or focus.
+
+### Jev's Answer
+
+Inside "About this clip", a disclosure lists every question Jev answered: its label, its answer in mask-hi, confidence, the question as asked, and up to five options as thin probability bars (mask fill on a `line` track). Options Jev gave 0% are hidden.
+
 ### Transcript and Trims
 The transcript is a scrolling `well` list (max 22rem) of full-width line buttons: a mono time followed by text in `ink-3`. Lines inside the clip span turn ivory on a 7% orange wash, with their times in `mask-hi`. The four edits below are collapsible `details` panels, each led by a round mono numeral and closed with a rotating chevron. Nudge buttons are small mono chips (`− line`, `− 0.5 s`, `+ 0.5 s`, `+ line`).
 

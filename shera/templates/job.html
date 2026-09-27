@@ -36,9 +36,10 @@
     <table class="compact">
       <tbody>
       <tr><th scope="row">Transcribe the audio <span class="muted">({{ stt_model }})</span></th><td class="num">{{ est.transcription|usd }}</td></tr>
-      <tr><th scope="row">Score {{ est.windows }} possible moments</th><td class="num">{{ est.ranking|usd }}</td></tr>
+      <tr><th scope="row">Translate the Bangla into English <span class="muted">({{ translate_model }})</span></th><td class="num">{{ est.translation|usd }}</td></tr>
+      <tr><th scope="row">Ask Jev about {{ est.windows }} possible 60–90 s clips</th><td class="num">{{ est.ranking|usd }}</td></tr>
       <tr><th scope="row">Draft posting text for up to 10 clips</th><td class="num">{{ est.drafts|usd }}</td></tr>
-      <tr class="total"><th scope="row">Estimate</th><td class="num">{{ (est.transcription + est.ranking + est.drafts)|usd }}</td></tr>
+      <tr class="total"><th scope="row">Estimate</th><td class="num">{{ (est.transcription + est.translation + est.ranking + est.drafts)|usd }}</td></tr>
       </tbody>
     </table>
     <form method="post" action="/jobs/{{ job.id }}/authorize"><button class="primary" type="submit">Approve up to ${{ '%.2f'|format(CAP) }} and continue</button></form>
@@ -73,7 +74,7 @@
       <form method="get" action="/jobs/{{ job.id }}/export"><button type="submit" {% if approved and not todo %}class="primary"{% endif %} {% if not approved %}disabled title="Approve at least one clip first"{% endif %}>Export {{ approved }} approved</button></form>
     </div>
     {% else %}
-    <p><strong>No strong moments in this class.</strong> No moment scored at least 2 of 4 for both teaching value and clarity, so nothing is suggested. That is a valid result; you can still open any moment under “Other moments”.</p>
+    <p><strong>No postable moments in this class.</strong> Jev found no teacher talk that is on-topic, useful on its own, and at least 2 of 4 for teaching value and clarity, so nothing is suggested. That is a valid result; you can still open any moment under “Other moments”.</p>
     {% endif %}
   </div>
   {% endif %}
@@ -87,32 +88,51 @@
 
 {% if job.stage in ('score', 'prepare', 'review') %}
 <section class="panel" aria-labelledby="short-h">
-  <h2 id="short-h">Suggested clips</h2>
+  <div class="head-row">
+    <h2 id="short-h">Suggested clips{% if short %} <span class="count num">{{ short|length }}</span>{% endif %}</h2>
+    <p class="muted legend-line">Each frame is a real still from the clip. The line under it is why Jev picked it.</p>
+  </div>
+
+  {% if job.duration %}
+  <div class="reel-wrap">
+    <div class="reel" role="list" aria-label="Where the clips sit in the {{ job.duration|t }} class">
+      {% for c in other if c.teacher is not none and c.teacher < 0.5 %}
+      <span class="reel-rec" style="left:{{ '%.3f'|format(c.start / job.duration * 100) }}%;width:{{ '%.3f'|format((c.end - c.start) / job.duration * 100) }}%"></span>
+      {% endfor %}
+      {% for c in short %}{% set st = (reviews.get(c.id) or {}).get('status', 'pending') %}
+      <a role="listitem" class="reel-mark r-{{ st }}" href="/jobs/{{ job.id }}/clips/{{ c.id }}"
+         style="left:{{ '%.3f'|format(c.start / job.duration * 100) }}%;width:{{ '%.3f'|format((c.end - c.start) / job.duration * 100) }}%"
+         title="Clip {{ c.rank }} · {{ c.start|t }}">{{ c.rank }}</a>
+      {% endfor %}
+    </div>
+    <div class="reel-scale num mono" aria-hidden="true"><span>0:00</span><span>{{ (job.duration / 2)|t }}</span><span>{{ job.duration|t }}</span></div>
+    <p class="reel-key muted"><span class="key key-clip"></span>suggested clip <span class="key key-ok"></span>approved <span class="key key-rec"></span>played recording (left out)</p>
+  </div>
+  {% endif %}
+
   {% if short %}
-  <p class="muted">Each line says what the clip is and why the AI picked it, in the words of the rubric it was scored on. Open a clip to watch and decide.</p>
-  <table class="clips">
-    <thead><tr><th scope="col" class="num">#</th><th scope="col">Clip</th><th scope="col">Where in the class</th><th scope="col" class="num">Length</th>
-      <th scope="col">Your decision</th><th scope="col"><span class="sr">Open</span></th></tr></thead>
-    <tbody>
+  <ol class="sheet">
     {% for c in short %}{% set r = reviews.get(c.id) %}{% set st = r.status if r else 'pending' %}{% set x = explain(c, r.drafts if r else none) %}
-    <tr class="r-{{ st }}">
-      <td class="num rank">{{ c.rank }}</td>
-      <td class="about-cell">
-        <span class="what">{% if x.what %}{{ x.what }}{% else %}“{{ x.opens }}”{% endif %}</span>
-        <span class="why" title="Value {{ c.value }} · clarity {{ c.clarity }} · opening {{ c.opening }} (each 0–4)">{{ x.why }}</span>
-      </td>
-      <td class="mono nowrap">{{ c.start|t }} – {{ c.end|t }}</td>
-      <td class="num">{{ '%.0f'|format(c.end - c.start) }} s</td>
-      <td><span class="badge r-{{ st }}">{{ STATUS_LABELS.get(st, st) }}</span></td>
-      <td><a class="button small" href="/jobs/{{ job.id }}/clips/{{ c.id }}">Open</a></td>
-    </tr>
+    <li class="shot r-{{ st }}">
+      <a class="gate shot-gate" href="/jobs/{{ job.id }}/clips/{{ c.id }}" aria-label="Open clip {{ c.rank }}">
+        <img src="/jobs/{{ job.id }}/clips/{{ c.id }}/frame.jpg" alt="" loading="lazy" width="480" height="270">
+        <span class="shot-rank num">{{ c.rank }}</span>
+        <span class="shot-len num mono">{{ '%.0f'|format(c.end - c.start) }} s</span>
+      </a>
+      <div class="shot-body">
+        <h3><a href="/jobs/{{ job.id }}/clips/{{ c.id }}">{% if x.what %}{{ x.what }}{% else %}“{{ x.opens }}”{% endif %}</a></h3>
+        {% if x.opens_en and not x.what %}<p class="en">{{ x.opens_en }}</p>{% endif %}
+        <p class="why">{{ x.why }}</p>
+        <p class="shot-foot"><span class="mono muted">{{ c.start|t }} – {{ c.end|t }}</span>
+          <span class="badge r-{{ st }}">{{ STATUS_LABELS.get(st, st) }}</span></p>
+      </div>
+    </li>
     {% endfor %}
-    </tbody>
-  </table>
-  {% elif job.status != 'done' %}<p class="muted">Suggestions appear here once scoring finishes.</p>{% endif %}
+  </ol>
+  {% elif job.status != 'done' %}<p class="muted">Suggestions appear here once Jev has scored the class.</p>{% endif %}
 
   {% if other %}
-  <details>
+  <details class="others">
     <summary>Other moments ({{ other|length }}) <span class="muted">— not suggested; each says why. Open one if you know it is good.</span></summary>
     <table class="clips">
       <thead><tr><th scope="col">Moment</th><th scope="col">Where in the class</th><th scope="col"><span class="sr">Open</span></th></tr></thead>
@@ -130,6 +150,9 @@
 {% endif %}
 
 <section class="danger-zone">
+  {% if job.status in ('done', 'failed', 'paused') and job.duration %}
+  <form method="post" action="/jobs/{{ job.id }}/redo" data-confirm="Find clips again from the recording? This transcribes the class again with the current model, translates it, and asks Jev again (you approve the cost first). Your reviews and previews for this class are removed."><button type="submit">Find clips again</button></form>
+  {% endif %}
   <form method="post" action="/jobs/{{ job.id }}/delete" data-confirm="Delete this class, its local copy, previews, and exports? This cannot be undone."><button type="submit" class="danger">Delete this class</button></form>
 </section>
 {% endblock %}

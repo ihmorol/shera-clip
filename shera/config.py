@@ -41,9 +41,17 @@ CAP_USD = 1.50
 WEIGHTS = (0.45, 0.35, 0.20)
 # Estimates only; the ledger records actual provider cost when the response reports it.
 STT_USD_PER_MIN = float(os.environ.get("SHERA_STT_USD_PER_MIN", 0.006))
-# Speech-to-text through OpenRouter; whisper-1 is the fallback when a provider rejects timestamps.
-STT_MODEL = os.environ.get("SHERA_STT_MODEL") or "openai/whisper-large-v3"
-STT_FALLBACK_MODEL = "openai/whisper-1"
+# Speech-to-text through OpenRouter (D25). MAI-Transcribe-2 lists Bengali, detects the language itself and
+# follows Bangla/English switching mid-sentence; Whisper large-v3 came last of 8 on a 2026 Bangla benchmark and
+# translated this class's Bangla into English. Deepgram Nova-3 (3rd on that benchmark) is the fallback when a
+# provider rejects timestamps (HTTP 400).
+STT_MODEL = os.environ.get("SHERA_STT_MODEL") or "microsoft/mai-transcribe-2"
+STT_FALLBACK_MODEL = os.environ.get("SHERA_STT_FALLBACK_MODEL") or "deepgram/nova-3"
+# English translation of the as-spoken transcript, so Jev (and the reviewer) read proper English.
+TRANSLATE_MODEL = os.environ.get("SHERA_TRANSLATE_MODEL") or "google/gemini-3.1-flash-lite"
+TRANSLATE_USD_PER_MIN = float(os.environ.get("SHERA_TRANSLATE_USD_PER_MIN", 0.001))
+# Clip length (D24): long enough to hold one complete teaching point.
+CLIP_MIN_S, CLIP_TARGET_S, CLIP_MAX_S = 60, 75, 90
 JEV_EST_USD = float(os.environ.get("SHERA_JEV_EST_USD", 0.002))
 DRAFT_EST_USD = float(os.environ.get("SHERA_DRAFT_EST_USD", 0.002))
 DRAFT_MODEL = os.environ.get("SHERA_DRAFT_MODEL") or "openai/gpt-4o-mini"

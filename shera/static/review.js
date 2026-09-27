@@ -40,8 +40,8 @@ function refreshSpan() {
   $("duration-sum").textContent = isFinite(d) ? `— ${d.toFixed(1)} s` : "";
   $("span-label").textContent = isFinite(d) ? `${fmt(s)} – ${fmt(e)}` : "";
   const warn = $("dur-warn");
-  warn.hidden = !(d < 15 || d > 60);
-  warn.textContent = d > 60 ? "over 60 s: longer complete explanation — your choice" : "under 15 s: check the point is complete";
+  warn.hidden = !(d < 60 || d > 90);
+  warn.textContent = d > 90 ? "over 90 s: fine if the point needs it — your choice" : "under 60 s: check the point is complete";
   for (const b of document.querySelectorAll(".unit")) {
     b.classList.toggle("in", parseFloat(b.dataset.end) > s && parseFloat(b.dataset.start) < e);
   }
