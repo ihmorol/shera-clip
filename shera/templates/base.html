@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{% if refresh %}<meta http-equiv="refresh" content="2">{% endif %}
+<title>{% block title %}Shera Clip{% endblock %}</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/">Shera Clip</a>
+  <nav aria-label="Breadcrumb">{% block crumbs %}{% endblock %}</nav>
+</header>
+<main id="main">
+{% block main %}{% endblock %}
+</main>
+<script src="/static/app.js" defer></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% set refresh = job.status == 'running' %}
+{% block title %}{{ job.title }} · Shera Clip{% endblock %}
+{% block crumbs %}<a href="/">Classes</a> / <span>{{ job.title }}</span>{% endblock %}
+{% block main %}
+<section class="panel" aria-labelledby="job-h">
+  <h1 id="job-h">{{ job.title }}</h1>
+  <ol class="rail" aria-label="Stages">
+    {% set cur = STAGES.index(job.stage) if job.stage in STAGES else 0 %}
+    {% for s in STAGES %}
+    <li class="{{ 'done' if loop.index0 < cur or job.status == 'done' else ('current s-' ~ job.status if loop.index0 == cur else '') }}"
+        {% if loop.index0 == cur %}aria-current="step"{% endif %}>{{ s }}</li>
+    {% endfor %}
+  </ol>
+
+  <p class="status-line"><span class="badge s-{{ job.status }}">{{ job.status }}</span>
+    stage <strong>{{ job.stage }}</strong>
+    {% if job.status == 'running' %}· <progress max="1" value="{{ job.progress or 0 }}" aria-label="Stage progress"></progress>
+      <span class="num">{{ ((job.progress or 0) * 100)|round|int }}%</span> <span class="muted">· refreshes every 2 s</span>{% endif %}</p>
+
+  <p class="num">Spend {{ spent|usd }} · authorized {{ ('$%.2f'|format(job.authorized_usd)) if job.authorized_usd is not none else 'not yet' }} · hard cap ${{ '%.2f'|format(CAP) }}</p>
+
+  {% if error %}<p class="alert fail" role="alert">{{ error }}</p>{% endif %}
+
+  {% if job.status == 'waiting' and est %}
+  <div class="alert attn">
+    <h2>Authorize paid work</h2>
+    <p>One authorization covers every paid call for this class. The ledger stops before the hard cap.</p>
+    <table class="compact">
+      <tbody>
+      <tr><th scope="row">Transcription (whisper-1)</th><td class="num">{{ est.transcription|usd }}</td></tr>
+      <tr><th scope="row">Ranking (Jev, {{ est.windows }} windows)</th><td class="num">{{ est.ranking|usd }}</td></tr>
+      <tr><th scope="row">Posting drafts (up to 10)</th><td class="num">{{ est.drafts|usd }}</td></tr>
+      <tr><th scope="row">Estimate</th><td class="num"><strong>{{ job.estimate_usd|usd }}</strong></td></tr>
+      </tbody>
+    </table>
+    <form method="post" action="/jobs/{{ job.id }}/authorize"><button class="primary" type="submit">Authorize paid work (hard cap ${{ '%.2f'|format(CAP) }})</button></form>
+  </div>
+  {% endif %}
+
+  {% if job.status in ('failed', 'paused') %}
+  <div class="alert {{ 'fail' if job.status == 'failed' else 'attn' }}" role="alert">
+    <p><strong>{{ 'Failed' if job.status == 'failed' else 'Paused' }}:</strong> {{ job.error }}</p>
+    {% if stuck %}
+      <p>These paid calls may have been sent without a recorded answer. Check the provider dashboard first; retrying may bill again.</p>
+      <ul>
+      {% for c in stuck %}
+        <li class="num">{{ c.kind }} · {{ c.key }} · est {{ c.est_usd|usd }}
+          <form method="post" action="/jobs/{{ job.id }}/calls/{{ c.id }}/retry" class="inline" data-confirm="Retry {{ c.key }}? The provider may bill again."><button type="submit">Retry (may bill again)</button></form></li>
+      {% endfor %}
+      </ul>
+    {% else %}
+      <p>Next: fix the cause above (a missing key goes in .env, then restart Shera Clip), then resume. Completed paid calls are never repeated.</p>
+      <form method="post" action="/jobs/{{ job.id }}/resume"><button type="submit">Resume</button></form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <p>Transcript: <strong>{{ job.transcript_source or 'not ready' }}</strong>
+    {% for f in job.flags or [] %}<span class="badge warn">{{ f }}</span> {% endfor %}</p>
+  <p class="muted num">Source {{ job.duration|t }} · {{ job.width or '?' }}×{{ job.height or '?' }} · {{ job.source_bytes|bytes }}</p>
+</section>
+
+{% if job.stage in ('score', 'prepare', 'review') %}
+<section class="panel" aria-labelledby="short-h">
+  <h2 id="short-h">Shortlist</h2>
+  {% if short %}
+  <table>
+    <thead><tr><th scope="col" class="num">#</th><th scope="col">Span</th><th scope="col" class="num">Length</th>
+      <th scope="col" class="num" title="value / clarity / opening, each 0–4">V / C / O</th><th scope="col" class="num">Score</th>
+      <th scope="col">Category</th><th scope="col">Review</th><th scope="col"><span class="sr">Open</span></th></tr></thead>
+    <tbody>
+    {% for c in short %}{% set r = reviews.get(c.id) %}
+    <tr>
+      <td class="num">{{ c.rank }}</td>
+      <td class="num">{{ c.start|t }} – {{ c.end|t }}</td>
+      <td class="num">{{ '%.0f'|format(c.end - c.start) }} s</td>
+      <td class="num">{{ c.value }} / {{ c.clarity }} / {{ c.opening }}</td>
+      <td class="num">{{ '%.2f'|format(c.score) }}</td>
+      <td>{{ CATEGORIES.get((r or c).category, (r or c).category) }}</td>
+      <td><span class="badge r-{{ r.status if r else 'pending' }}">{{ r.status if r else 'pending' }}</span></td>
+      <td><a href="/jobs/{{ job.id }}/clips/{{ c.id }}">Open</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% elif job.status == 'done' %}
+  <p class="empty"><strong>No strong moments in this class.</strong> No candidate reached value 2 and clarity 2, so nothing is suggested. That is a valid result.</p>
+  {% else %}<p class="muted">The shortlist appears after scoring.</p>{% endif %}
+
+  {% if other %}
+  <details>
+    <summary>Other candidates ({{ other|length }})</summary>
+    <table>
+      <thead><tr><th scope="col">Span</th><th scope="col" class="num">V / C / O</th><th scope="col" class="num">Score</th><th scope="col">Category</th><th scope="col"><span class="sr">Open</span></th></tr></thead>
+      <tbody>
+      {% for c in other %}
+      <tr><td class="num">{{ c.start|t }} – {{ c.end|t }}</td>
+        <td class="num">{% if c.score is not none %}{{ c.value }} / {{ c.clarity }} / {{ c.opening }}{% else %}not scored{% endif %}</td>
+        <td class="num">{{ '%.2f'|format(c.score) if c.score is not none else '–' }}</td>
+        <td>{{ CATEGORIES.get(c.category, c.category or '–') }}</td>
+        <td><a href="/jobs/{{ job.id }}/clips/{{ c.id }}">Open</a></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="panel actions">
+  <form method="get" action="/jobs/{{ job.id }}/export"><button type="submit" class="primary" {% if not approved %}disabled title="Approve at least one clip first"{% endif %}>Export {{ approved }} approved</button></form>
+  <form method="post" action="/jobs/{{ job.id }}/delete" data-confirm="Delete this class, its local copy, previews, and exports? This cannot be undone."><button type="submit" class="danger">Delete job</button></form>
+</section>
+{% endblock %}

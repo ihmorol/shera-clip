@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Clip {{ c.id }} · {{ job.title }}{% endblock %}
+{% block crumbs %}<a href="/">Classes</a> / <a href="/jobs/{{ job.id }}">{{ job.title }}</a> / <span>{{ 'Rank ' ~ c.rank if c.rank else 'Candidate' }} · {{ c.start|t }}</span>{% endblock %}
+{% block main %}
+<div class="review" id="review" data-base="/jobs/{{ job.id }}/clips/{{ c.id }}"
+     data-prev="{{ '/jobs/%s/clips/%s'|format(job.id, prev) if prev else '' }}" data-next="{{ '/jobs/%s/clips/%s'|format(job.id, next) if next else '' }}">
+<div class="col">
+  <section class="panel" aria-labelledby="src-h">
+    <h2 id="src-h">Source <span class="muted num" id="span-label"></span></h2>
+    <video id="source" src="{{ source_url }}" controls preload="metadata"></video>
+    <p><button type="button" id="play-span">Play clip span</button> <span class="muted">J / K: previous / next candidate</span></p>
+    <ol class="transcript" id="transcript" aria-label="Transcript near this clip">
+      {% for u in near %}
+      <li><button type="button" class="unit" data-start="{{ u.start }}" data-end="{{ u.end }}">
+        <span class="num muted">{{ u.start|t }}</span> {% if u.speaker %}<span class="muted">{{ u.speaker }}:</span> {% endif %}{{ u.text }}</button></li>
+      {% endfor %}
+    </ol>
+  </section>
+  <section class="panel" aria-labelledby="score-h">
+    <h2 id="score-h">Scores</h2>
+    {% if c.score is not none %}
+    <p class="num">Value {{ c.value }}/4 · Clarity {{ c.clarity }}/4 · Opening {{ c.opening }}/4 · Score {{ '%.2f'|format(c.score) }}</p>
+    {% else %}<p class="muted">Not scored.</p>{% endif %}
+    <details><summary>Supporting source text</summary><p class="excerpt">{{ c.text }}</p></details>
+    <div class="grid-form">
+      <label for="category">Category</label>
+      <select id="category" data-field>
+        {% for k, label in CATEGORIES.items() %}<option value="{{ k }}" {% if rv.category == k %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <label for="tags">Tags <span class="muted">(comma-separated)</span></label>
+      <input id="tags" data-field value="{{ (rv.tags or [])|join(', ') }}" placeholder="Writing, Task 2, Band 6–7">
+    </div>
+  </section>
+</div>
+
+<div class="col">
+  <section class="panel" aria-labelledby="bounds-h">
+    <h2 id="bounds-h">Boundaries</h2>
+    <div class="bounds">
+      {% for side in ('start', 'end') %}
+      <fieldset>
+        <legend>{{ side|capitalize }} <span class="muted">(source seconds)</span></legend>
+        <input type="number" id="{{ side }}" step="0.1" min="0" max="{{ job.duration }}" value="{{ rv[side] }}" data-field aria-label="{{ side|capitalize }} seconds">
+        <div class="nudge">
+          <button type="button" data-nudge="{{ side }}" data-unit="-1" aria-label="{{ side }} one transcript unit earlier">−unit</button>
+          <button type="button" data-nudge="{{ side }}" data-by="-0.5">−0.5 s</button>
+          <button type="button" data-nudge="{{ side }}" data-by="0.5">+0.5 s</button>
+          <button type="button" data-nudge="{{ side }}" data-unit="1" aria-label="{{ side }} one transcript unit later">+unit</button>
+        </div>
+      </fieldset>
+      {% endfor %}
+    </div>
+    <p>Duration <strong class="num" id="duration"></strong> <span id="dur-warn" class="badge warn" hidden></span></p>
+  </section>
+
+  <section class="panel" aria-labelledby="layout-h">
+    <h2 id="layout-h">Layout</h2>
+    {% set lay = rv.layout or {'mode': 'full'} %}
+    <fieldset class="radios"><legend class="sr">Layout mode</legend>
+      <label><input type="radio" name="mode" value="full" data-field {% if lay.mode != 'crop' %}checked{% endif %}> Full frame</label>
+      <label><input type="radio" name="mode" value="crop" data-field {% if lay.mode == 'crop' %}checked{% endif %}> Crop</label>
+    </fieldset>
+    <div id="crop-fields" {% if lay.mode != 'crop' %}hidden{% endif %}>
+      {% for box, vals in (('crop', lay.crop or [0, 0, 1, 1]), ('inset', lay.inset or [0.75, 0, 0.25, 0.25])) %}
+      <fieldset class="box"><legend>{% if box == 'inset' %}<label><input type="checkbox" id="use-inset" data-field {% if lay.inset %}checked{% endif %}> Teacher inset</label>{% else %}Content crop{% endif %} <span class="muted">(0–1 of source)</span></legend>
+        {% for n in ('x', 'y', 'w', 'h') %}
+        <label>{{ n }} <input type="number" step="0.01" min="0" max="1" id="{{ box }}-{{ n }}" value="{{ vals[loop.index0] }}" data-field></label>
+        {% endfor %}
+      </fieldset>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="cap-h">
+    <h2 id="cap-h">Title and captions</h2>
+    <div class="grid-form">
+      <label for="title">On-video title</label>
+      <input id="title" data-field value="{{ rv.title or '' }}">
+    </div>
+    <table class="captions">
+      <thead><tr><th scope="col">Start</th><th scope="col">End</th><th scope="col">Text (as spoken)</th><th scope="col"><span class="sr">Delete</span></th></tr></thead>
+      <tbody id="cap-rows"></tbody>
+    </table>
+    <template id="cap-row"><tr>
+      <td><input type="number" step="0.1" min="0" class="c-start" aria-label="Caption start (s from clip start)" data-field></td>
+      <td><input type="number" step="0.1" min="0" class="c-end" aria-label="Caption end (s from clip start)" data-field></td>
+      <td><input class="c-text" aria-label="Caption text" data-field></td>
+      <td><button type="button" class="c-del" aria-label="Delete caption row">×</button></td></tr></template>
+    <p><button type="button" id="cap-add">Add row</button>
+      <button type="button" id="cap-reset" title="Replace captions with the transcript text for the saved boundaries">Rebuild from transcript</button>
+      <span class="muted">Times are seconds from the clip start.</span></p>
+  </section>
+
+  <section class="panel" aria-labelledby="post-h">
+    <h2 id="post-h">Posting text</h2>
+    {% set d = rv.drafts or {} %}
+    {% if d.error %}<p class="alert fail">Draft provider error: {{ d.error }}</p>{% endif %}
+    {% if not d or d.error %}
+      <p>{% if not d %}<span class="muted">No draft yet.</span>{% endif %}
+        <button type="button" id="draft-run">Draft posting text (paid)</button>
+        <span id="draft-status" class="muted" role="status"></span></p>
+    {% endif %}
+    {% for p in ('facebook', 'youtube') %}
+    <fieldset class="post"><legend>{{ 'Facebook' if p == 'facebook' else 'YouTube' }}</legend>
+      <div class="grid-form">
+      {% for k in ('title', 'description', 'cta') %}
+        <label for="{{ p }}-{{ k }}">{{ 'CTA' if k == 'cta' else k|capitalize }}</label>
+        {% if k == 'description' %}<textarea id="{{ p }}-{{ k }}" rows="4" data-field>{{ (d.get(p) or {}).get(k, '') }}</textarea>
+        {% else %}<input id="{{ p }}-{{ k }}" data-field value="{{ (d.get(p) or {}).get(k, '') }}">{% endif %}
+      {% endfor %}
+      </div>
+    </fieldset>
+    {% endfor %}
+  </section>
+
+  <section class="panel" aria-labelledby="dec-h">
+    <h2 id="dec-h">Preview and decision</h2>
+    <p><button type="button" id="save" class="primary">Save</button> <span id="save-status" role="status" class="muted"></span></p>
+    <div class="phone"><video id="preview" controls preload="metadata" {% if state.preview_url %}src="{{ state.preview_url }}"{% endif %}></video>
+      <p id="no-preview" class="muted" {% if state.preview_url %}hidden{% endif %}>No preview of the current saved edits.</p></div>
+    <p><button type="button" id="render">Render phone preview</button> <span id="render-status" role="status" class="muted"></span></p>
+    <p class="decide">
+      <span class="badge r-{{ rv.status }}" id="status-badge">{{ rv.status }}</span>
+      <button type="button" id="approve" class="ok" disabled>Approve</button>
+      <button type="button" id="reject">Reject</button>
+    </p>
+    <p id="approve-hint" class="muted" role="status"></p>
+  </section>
+</div>
+</div>
+<script type="application/json" id="data">{{ {"rv": {"start": rv.start, "end": rv.end, "captions": rv.captions or []}, "state": state, "bounds": bounds}|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/static/review.js" defer></script>{% endblock %}

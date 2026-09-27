@@ -1,6 +1,6 @@
 # Contributing and documentation maintenance
 
-This project is at specification stage. Use GitHub Issues for work and decisions and pull requests for changes. Do not treat the historical plans as current instructions.
+This project is at the phase-1 prototype stage (local import). Use GitHub Issues for work and decisions and pull requests for changes. Do not treat the historical plans as current instructions.
 
 ## Sources of truth
 
