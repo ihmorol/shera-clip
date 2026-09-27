@@ -172,26 +172,32 @@ TRANSLATE_SYSTEM = (
     "You translate lines from an IELTS class transcript into natural, accurate English. The teacher mixes Bangla "
     "and English. Translate the meaning faithfully; keep English words, IELTS terms, names and numbers as they "
     "are; return a line that is already English unchanged. Never add, explain, or merge lines. "
-    'Reply with JSON only: {"en": ["...", ...]} with exactly one string per input line, in the same order.'
+    "The input is a JSON object of numbered lines. Reply with JSON only: an object with the same numbers as keys, "
+    'each mapped to the English of that one line, e.g. {"1": "...", "2": "..."}.'
 )
 
 
 def translate(lines):
-    """English for each as-spoken transcript line, one-to-one."""
+    """English for each as-spoken line, matched by line number, so an extra, merged, or dropped line can never
+    shift a translation onto the wrong timestamp. -> {"en": [str | None, ...]}; None = not returned, ask again."""
     data, cost = _openrouter(CHAT_URL, {
         "model": config.TRANSLATE_MODEL,
         "response_format": {"type": "json_object"},
         "usage": {"include": True},
         "messages": [{"role": "system", "content": TRANSLATE_SYSTEM},
-                     {"role": "user", "content": json.dumps({"lines": lines}, ensure_ascii=False)}],
+                     {"role": "user", "content": json.dumps({str(i): t for i, t in enumerate(lines, 1)}, ensure_ascii=False)}],
     })
     try:
-        en = json.loads(data["choices"][0]["message"]["content"])["en"]
-        if len(en) != len(lines) or not all(isinstance(t, str) for t in en):
-            raise ValueError(f"{len(en)} lines back for {len(lines)} sent")
+        got = json.loads(data["choices"][0]["message"]["content"])
+        if not isinstance(got, dict):
+            raise ValueError("not a JSON object")
+        en = [got.get(str(i)) for i in range(1, len(lines) + 1)]
+        en = [t.strip() if isinstance(t, str) and t.strip() else None for t in en]
+        if sum(t is not None for t in en) < len(lines) / 2:  # mostly missing: the answer is not usable
+            raise ValueError(f"{sum(t is not None for t in en)} of {len(lines)} lines answered")
     except (KeyError, TypeError, IndexError, ValueError) as e:
         raise ProviderError(f"translate: unexpected answer shape ({e!r})", billed=True, cost=cost) from e
-    return {"en": [t.strip() for t in en]}, cost
+    return {"en": en}, cost
 
 
 def draft_post(excerpt, category, english=None):

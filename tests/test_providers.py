@@ -87,15 +87,22 @@ def test_transcribe_uses_openrouter_and_falls_back_on_400(monkeypatch, tmp_path)
     assert config.STT_MODEL == "microsoft/mai-transcribe-2"  # D25: lists Bengali and follows code switching
 
 
-def test_translate_is_one_line_per_line(monkeypatch):
-    def reply(en):
-        return fake_post({"choices": [{"message": {"content": json.dumps({"en": en})}}], "usage": {"cost": 0.0002}})
-    post = reply(["Today we will talk about Task 2.", " Paraphrase. "])
+def test_translate_matches_lines_by_number(monkeypatch):
+    def reply(obj):
+        return fake_post({"choices": [{"message": {"content": json.dumps(obj)}}], "usage": {"cost": 0.0002}})
+    post = reply({"1": "Today we will talk about Task 2.", "2": " Paraphrase. "})
     monkeypatch.setattr(httpx, "post", post)
     out, cost = providers.translate(["আজকে আমরা Task 2 নিয়ে কথা বলব।", "Paraphrase."])
     assert out == {"en": ["Today we will talk about Task 2.", "Paraphrase."]} and cost == 0.0002
+    sent = json.loads(post.sent["json"]["messages"][1]["content"])
+    assert sent == {"1": "আজকে আমরা Task 2 নিয়ে কথা বলব।", "2": "Paraphrase."}
     assert post.sent["json"]["model"] == config.TRANSLATE_MODEL
-    monkeypatch.setattr(httpx, "post", reply(["only one"]))
-    with pytest.raises(ProviderError) as e:  # a merged or dropped line would shift every timestamp
-        providers.translate(["a", "b"])
+    # the real failure: an extra line came back (61 for 60). Numbers keep every line on its own timestamp.
+    monkeypatch.setattr(httpx, "post", reply({"1": "one", "2": "two", "3": "three", "4": "stray extra"}))
+    assert providers.translate(["a", "b", "c"])[0] == {"en": ["one", "two", "three"]}
+    monkeypatch.setattr(httpx, "post", reply({"1": "one", "3": "three"}))  # a skipped line is None, asked again later
+    assert providers.translate(["a", "b", "c"])[0] == {"en": ["one", None, "three"]}
+    monkeypatch.setattr(httpx, "post", reply({"1": "one"}))
+    with pytest.raises(ProviderError) as e:  # mostly unanswered: unusable, and billed
+        providers.translate(["a", "b", "c", "d"])
     assert e.value.billed
