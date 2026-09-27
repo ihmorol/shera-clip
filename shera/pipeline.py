@@ -10,7 +10,7 @@ import uuid
 from pathlib import Path
 
 from shera import candidates as cand
-from shera import config, db, ledger, media, providers, transcript
+from shera import config, db, ledger, media, providers, transcript, zoom
 
 _running = set()
 _lock = threading.Lock()
@@ -42,6 +42,19 @@ def start_job(src_mp4, vtt=None, audio=None):
     db.x("INSERT INTO jobs(id, created, title, source_path, vtt_path, audio_path, stage, status, progress, flags) "
          "VALUES (?, ?, ?, ?, ?, ?, 'import', 'running', 0, '[]')",
          job_id, time.time(), Path(src_mp4).stem, str(src_mp4), str(vtt) if vtt else None, str(audio) if audio else None)
+    _spawn(job_id)
+    return job_id
+
+
+def start_zoom_job(meeting_uuid, title, mp4, vtt=None, m4a=None):
+    """A Zoom cloud recording: the chosen files (Zoom file ids) are downloaded into the job folder by _import,
+    after which the job reads them exactly like a local import."""
+    job_id = uuid.uuid4().hex[:12]
+    d = job_dir(job_id)
+    db.x("INSERT INTO jobs(id, created, title, source_path, vtt_path, audio_path, stage, status, progress, flags, zoom) "
+         "VALUES (?, ?, ?, ?, ?, ?, 'import', 'running', 0, '[]', ?)",
+         job_id, time.time(), title, str(d / "source.mp4"), str(d / "source.vtt") if vtt else None,
+         str(d / "zoom.m4a") if m4a else None, json.dumps({"uuid": meeting_uuid, "mp4": mp4, "vtt": vtt, "m4a": m4a}))
     _spawn(job_id)
     return job_id
 
@@ -94,6 +107,9 @@ def _import(job_id):
     d.mkdir(parents=True, exist_ok=True)
     src = d / "source.mp4"
     db.update_job(job_id, stage="import")
+    if job["zoom"]:
+        _download(job_id, job, d)
+        job = db.get_job(job_id)
     if not job["source_sha256"] or not src.exists():
         sha, n = media.copy_with_hash(Path(job["source_path"]), src, lambda f: db.update_job(job_id, progress=f))
         db.update_job(job_id, source_sha256=sha, source_bytes=n)
@@ -110,6 +126,17 @@ def _import(job_id):
         job = db.get_job(job_id)
     if job["audio_path"] and not (d / "media.mp4").exists():
         _attach_audio(job_id, job, d)
+
+
+def _download(job_id, job, d):
+    """Fetch the chosen Zoom files; each lands under its final name only when complete, so a resume skips it."""
+    z = job["zoom"]
+    if not job["source_sha256"] or not (d / "source.mp4").exists():
+        sha, n = zoom.download(z["uuid"], z["mp4"], d / "source.mp4", lambda f: db.update_job(job_id, progress=f))
+        db.update_job(job_id, source_sha256=sha, source_bytes=n)
+    for kind, name in (("vtt", "source.vtt"), ("m4a", "zoom.m4a")):
+        if z.get(kind) and not (d / name).exists():
+            zoom.download(z["uuid"], z[kind], d / name)
 
 
 def _attach_audio(job_id, job, d):

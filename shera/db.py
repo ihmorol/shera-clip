@@ -6,14 +6,14 @@ import time
 from shera import config
 
 LOCK = threading.RLock()  # ponytail: one shared connection + global lock; fine for a single-operator local app
-JSON_COLS = {"flags", "tags", "captions", "layout", "drafts", "posted", "result", "jev"}
+JSON_COLS = {"flags", "tags", "captions", "layout", "drafts", "posted", "result", "jev", "zoom"}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs(
   id TEXT PRIMARY KEY, created REAL, title TEXT, source_path TEXT, source_sha256 TEXT,
   source_bytes INTEGER, duration REAL, width INTEGER, height INTEGER, vtt_path TEXT,
   stage TEXT, status TEXT, progress REAL, error TEXT, authorized_usd REAL, estimate_usd REAL,
-  transcript_source TEXT, flags TEXT DEFAULT '[]', audio_path TEXT, audio_offset REAL);
+  transcript_source TEXT, flags TEXT DEFAULT '[]', audio_path TEXT, audio_offset REAL, zoom TEXT);
 CREATE TABLE IF NOT EXISTS candidates(
   id INTEGER PRIMARY KEY, job_id TEXT, u0 INTEGER, u1 INTEGER, start REAL, "end" REAL,
   text TEXT, value INTEGER, clarity INTEGER, opening INTEGER, category TEXT, score REAL,
@@ -30,7 +30,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS paid_calls_key ON paid_calls(job_id, key) WHER
 """
 
 ADDED = (("jobs", "audio_path", "TEXT"), ("jobs", "audio_offset", "REAL"), ("candidates", "text_en", "TEXT"),
-         ("candidates", "teacher", "REAL"), ("candidates", "complete", "REAL"), ("candidates", "jev", "TEXT"))
+         ("candidates", "teacher", "REAL"), ("candidates", "complete", "REAL"), ("candidates", "jev", "TEXT"),
+         ("jobs", "zoom", "TEXT"))
 _conn = None
 _path = None
 

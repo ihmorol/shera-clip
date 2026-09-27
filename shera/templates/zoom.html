@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Zoom recordings · Shera Clip{% endblock %}
+{% block crumbs %}<a href="/">Classes</a><span aria-hidden="true">/</span><span>Zoom recordings</span>{% endblock %}
+{% block main %}
+<div class="page-head">
+  <h1>Import from Zoom</h1>
+  <p class="lede">Classes recorded to the Zoom cloud. Choose one occurrence; Shera Clip downloads it, checks its size, and starts.</p>
+</div>
+
+{% if not configured %}
+<section class="panel alert attn" aria-labelledby="zsetup-h">
+  <h2 id="zsetup-h">Connect Zoom first</h2>
+  <p>Add <span class="mono">ZOOM_ACCOUNT_ID</span>, <span class="mono">ZOOM_CLIENT_ID</span>, <span class="mono">ZOOM_CLIENT_SECRET</span> and <span class="mono">ZOOM_USER</span> (the teacher's Zoom email) to <span class="mono">.env</span>, then restart Shera Clip. The read-only Zoom app they come from is described in <span class="mono">docs/zoom-setup.md</span>.</p>
+  <p><a href="/">Import files saved on this laptop instead</a></p>
+</section>
+{% else %}
+<section class="panel" aria-labelledby="zlist-h">
+  <h2 id="zlist-h">Recorded {{ start.strftime('%d %b') }} – {{ to.strftime('%d %b %Y') }}</h2>
+  {% if error %}<p class="alert fail" role="alert">{{ error }}</p>{% endif %}
+  <p><a class="button" href="/zoom?to={{ to.isoformat() }}">Refresh</a> <a class="button" href="/zoom?to={{ earlier.isoformat() }}">Earlier month</a></p>
+  {% if not occ and not error %}<p class="muted">No cloud recordings in these dates.</p>{% endif %}
+  {% for o in occ %}{% set when = zoom_time(o.start) %}
+  <form method="post" action="/zoom/import">
+    <fieldset>
+      <legend><strong>{{ o.topic }}</strong> <span class="muted">· {{ when.strftime('%a %d %b %Y, %H:%M') if when else o.start }}{% if o.minutes %} · {{ o.minutes }} min{% endif %}</span></legend>
+      {% if o.videos %}
+      <input type="hidden" name="uuid" value="{{ o.uuid }}">
+      <div class="radios" role="radiogroup" aria-label="Video layout">
+        {% for v in o.videos %}<label><input type="radio" name="mp4" value="{{ v.id }}"{% if loop.first %} checked{% endif %}> {{ v.label }} <span class="muted">· {{ v.size|bytes }}</span></label>{% endfor %}
+      </div>
+      {% if o.vtt %}<label><input type="checkbox" name="vtt" value="{{ o.vtt.id }}" checked> Use Zoom's transcript (.vtt)</label>
+      {% else %}<p class="muted">No Zoom transcript: the audio will be transcribed for a few cents.</p>{% endif %}
+      {% if o.m4a %}<p><label><input type="checkbox" name="m4a" value="{{ o.m4a.id }}"> Use Zoom's separate audio (.m4a) instead of the video's sound</label></p>{% endif %}
+      {% if o.processing %}<p class="muted">Zoom is still processing {{ o.processing }} more file{{ 's' if o.processing > 1 }} of this recording.</p>{% endif %}
+      <p><button type="submit" class="primary">Import this class</button></p>
+      {% elif o.processing %}<p class="muted">Zoom is still processing this recording. Refresh in a few minutes.</p>
+      {% else %}<p class="muted">This recording has no video file.</p>{% endif %}
+    </fieldset>
+  </form>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}
