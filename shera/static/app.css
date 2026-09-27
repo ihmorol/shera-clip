@@ -317,7 +317,7 @@ details > summary:hover { color: var(--mask-hi); }
 .bounds fieldset { margin: 0; }
 .nudge { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .5rem; }
 .nudge button { padding: .3rem .55rem; font-size: .82rem; font-family: var(--mono); font-weight: 500; }
-.radios { display: flex; gap: 1.5rem; border: 0; padding: 0; margin: .5rem 0 1rem; }
+.radios { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; border: 0; padding: 0; margin: .5rem 0 1rem; }
 .radios label { display: inline-flex; gap: .45rem; align-items: center; font-size: .95rem; }
 .box { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; }
 .box legend { display: flex; gap: .45rem; align-items: center; }

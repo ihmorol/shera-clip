@@ -19,6 +19,7 @@
 <section class="panel" aria-labelledby="import-h">
   <h2 id="import-h">Import a class</h2>
   {% if error %}<p class="alert fail" role="alert">{{ error }}</p>{% endif %}
+  <p><a class="button" href="/zoom"><svg class="i" aria-hidden="true"><use href="#i-reel"/></svg>Choose from Zoom cloud recordings</a> <span class="muted">or pick files saved on this laptop:</span></p>
   <form method="post" action="/import" class="import-form">
     <label for="mp4">Class video <span class="muted">(.mp4)</span></label>
     <div class="pick">

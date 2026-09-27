@@ -1,6 +1,6 @@
 # Zoom cloud recording setup
 
-This is a future operator checklist. The owner chose to configure Zoom access when implementation reaches phase 2; the phase-1 prototype uses local MP4/VTT import (D15). No credentials are needed to maintain the specification.
+This is the operator checklist for phase 2. The phase-1 prototype uses local MP4/VTT import (D15); the Zoom import is implemented (D27) and has been tested only against a simulated Zoom until this app exists ([#2](https://github.com/ihmorol/shera-clip/issues/2)). No credentials are needed to maintain the specification.
 
 ## Account prerequisites
 
@@ -13,10 +13,10 @@ This is a future operator checklist. The owner chose to configure Zoom access wh
 1. In the Zoom web portal, confirm **Account Management → Account Settings → Recording & Transcript → Cloud recording** is enabled. Under Advanced cloud recording settings, enable **Create audio transcript** for future recordings if available.
 2. In [Zoom App Marketplace](https://marketplace.zoom.us/), choose **Developer → Build App → Server-to-Server OAuth**. If Developer is absent, grant the account role permission to view/edit these apps and the recording scopes. Do not use a normal Zoom password as the application's integration credential.
 3. Add the minimum read scopes needed for the chosen host: `cloud_recording:read:list_user_recordings:admin` and `cloud_recording:read:list_recording_files:admin`. Add `cloud_recording:read:meeting_transcript:admin` only if the transcript endpoint is used. Do not add recording write/delete scopes.
-4. Activate the app. Keep its Account ID, Client ID, and Client Secret in a local credential store or server environment at implementation time, never in this repository, browser bundle, issue, chat, screenshot, or exported package.
-5. Supply the intended host's Zoom user ID or email to the local app. Verify that it lists the expected meeting occurrence, available MP4 layouts, and VTT before importing a class.
+4. Activate the app. Put its Account ID, Client ID, and Client Secret in the laptop's `.env` as `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, and `ZOOM_CLIENT_SECRET`, never in this repository, browser bundle, issue, chat, screenshot, or exported package.
+5. Set `ZOOM_USER` in `.env` to the intended host's Zoom email or user ID, then restart Shera Clip. Verify that it lists the expected meeting occurrence, available MP4 layouts, and VTT before importing a class.
 
-## Import behavior to implement
+## Import behavior (implemented, D27)
 
 The local app requests an account access token with `grant_type=account_credentials`, lists the host's cloud recordings, and lets the operator choose a meeting occurrence. It downloads the selected MP4 and available transcript using `Authorization: Bearer` and follows redirects. Tokens expire after about one hour; request a new token when needed. Recordings may expose several MP4 layouts or no transcript. Prefer the screen-share-with-speaker layout, but show a choice when layouts differ materially. Poll on app open and explicit Refresh; do not add a public webhook endpoint to the local MVP.
 

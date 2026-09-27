@@ -14,7 +14,7 @@ The analyses in `plans/` and the earlier MVP v2 plan are historical references. 
 
 ## Project status
 
-**Phase-1 working prototype: local MP4/VTT import (D15).** Zoom API import comes in phase 2. Nothing here is publish-ready until the gates in [acceptance](docs/acceptance.md) pass on real classes. Zoom credentials, consent-cleared class samples, and brand assets are still implementation inputs; their absence does not authorize anyone to fabricate evidence.
+**Phase-1 working prototype: local MP4/VTT import (D15).** Phase 2 adds Zoom cloud-recording import; it is tested against a simulated Zoom only until the read-only Zoom app exists ([#2](https://github.com/ihmorol/shera-clip/issues/2)). Nothing here is publish-ready until the gates in [acceptance](docs/acceptance.md) pass on real classes. Zoom credentials, consent-cleared class samples, and brand assets are still implementation inputs; their absence does not authorize anyone to fabricate evidence.
 
 ## Run it
 
@@ -33,7 +33,7 @@ Copy `.env.example` to `.env` and fill in `OPENROUTER_API_KEY`. That one key cov
 python -m shera
 ```
 
-The app opens at `http://127.0.0.1:8765`. Put `class.mp4` and `class.vtt` (same file name) in `data/inbox/`, or paste their paths on the home page. Then import the class and authorize paid work, which is capped at USD 1.50 per class. Review the shortlist, render a phone preview, and approve. Finally, export; packages land in `data/exports/<job>/`.
+The app opens at `http://127.0.0.1:8765`. Put `class.mp4` and `class.vtt` (same file name) in `data/inbox/`, or paste their paths on the home page. With the four `ZOOM_*` values in `.env`, **Choose from Zoom cloud recordings** lists the teacher's cloud recordings a month at a time and downloads the chosen one. Then import the class and authorize paid work, which is capped at USD 1.50 per class. Review the shortlist, render a phone preview, and approve. Finally, export; packages land in `data/exports/<job>/`.
 
 Run the tests with `pip install -e .[test]` and then `python -m pytest -q`. They generate their own synthetic media.
 

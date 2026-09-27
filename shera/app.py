@@ -5,6 +5,7 @@ import re
 import shutil
 import string
 import threading
+from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -14,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from shera import candidates as cand
-from shera import config, db, ledger, media, pipeline, providers
+from shera import config, db, ledger, media, pipeline, providers, zoom
 
 HERE = Path(__file__).parent
 STAGES = ("import", "transcript", "authorize", "transcribe", "translate", "candidates", "score", "prepare", "review")
@@ -131,7 +132,7 @@ def fmt_bytes(n):
 
 templates.env.filters.update(t=fmt_time, bytes=fmt_bytes, usd=lambda v: f"${float(v or 0):.4f}")
 templates.env.globals.update(CATEGORIES=CATEGORIES, CAP=config.CAP_USD, STAGES=STAGES,
-                             STAGE_LABELS=STAGE_LABELS, STATUS_LABELS=STATUS_LABELS)
+                             STAGE_LABELS=STAGE_LABELS, STATUS_LABELS=STATUS_LABELS, zoom_time=zoom.local_time)
 
 
 # ---------- plain-words reasons, from the same rubric Jev scored against ----------
@@ -341,6 +342,45 @@ def import_(request: Request, mp4: str = Form(""), vtt: str = Form(""), m4a: str
     if err:
         return _home(request, err, form, 400)
     job_id = pipeline.start_job(src, vtt_path, m4a_path)
+    return RedirectResponse(f"/jobs/{job_id}", 303)
+
+
+# ---------- Zoom cloud recordings (phase 2, D15) ----------
+
+def _zoom_page(request, to=None, error=None, status_code=200):
+    """Lists the account's cloud recordings on open and on Refresh; no webhook (local-only MVP)."""
+    to = to or date.today()
+    ctx = {"configured": zoom.configured(), "to": to, "start": to - timedelta(days=30), "occ": [], "error": error}
+    if ctx["configured"]:
+        try:
+            ctx["start"], ctx["occ"] = zoom.recordings(to)
+        except zoom.ZoomError as e:
+            ctx["error"] = error or str(e)
+    return page(request, "zoom.html", status_code, earlier=ctx["start"] - timedelta(days=1), **ctx)
+
+
+@app.get("/zoom")
+def zoom_list(request: Request, to: str = ""):
+    try:
+        day = date.fromisoformat(to) if to else None
+    except ValueError:
+        raise HTTPException(422, "to must be a date like 2026-09-27")
+    return _zoom_page(request, day)
+
+
+@app.post("/zoom/import")
+def zoom_import(request: Request, uuid: str = Form(...), mp4: str = Form(...), vtt: str = Form(""), m4a: str = Form("")):
+    try:
+        occ = zoom.occurrence(zoom.meeting(uuid))  # the form's file ids must still be completed files of this occurrence
+    except zoom.ZoomError as e:
+        return _zoom_page(request, error=str(e), status_code=400)
+    if (mp4 not in {v["id"] for v in occ["videos"]} or vtt not in ("", (occ["vtt"] or {}).get("id"))
+            or m4a not in ("", (occ["m4a"] or {}).get("id"))):
+        return _zoom_page(request, error="That recording file is no longer in Zoom or not ready yet. "
+                                         "Refresh the list and choose again.", status_code=400)
+    when = zoom.local_time(occ["start"])
+    title = occ["topic"] + (when.strftime(" · %d %b %Y") if when else "")
+    job_id = pipeline.start_zoom_job(uuid, title, mp4, vtt=vtt or None, m4a=m4a or None)
     return RedirectResponse(f"/jobs/{job_id}", 303)
 
 
