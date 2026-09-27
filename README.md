@@ -14,6 +14,27 @@ The analyses in `plans/` and the earlier MVP v2 plan are historical references. 
 
 ## Project status
 
-**Specification approved; implementation not started.** Zoom app credentials, consent-cleared class samples, OpenRouter/OpenAI access, and optional brand assets are implementation inputs. Their absence does not authorize an agent to fabricate evidence or relax acceptance gates.
+**Phase-1 working prototype: local MP4/VTT import (D15).** Zoom API import comes in phase 2. Nothing here is publish-ready until the gates in [acceptance](docs/acceptance.md) pass on real classes. Zoom credentials, consent-cleared class samples, and brand assets are still implementation inputs; their absence does not authorize anyone to fabricate evidence.
+
+## Run it
+
+Requirements:
+- Python 3.12 or later.
+- FFmpeg and ffprobe on `PATH`, built with libass.
+- A Bangla-capable font. On Windows, "Nirmala UI" is used.
+
+```bash
+pip install -e .
+```
+
+Copy `.env.example` to `.env` and fill in `OPENROUTER_API_KEY`, which ranking and posting drafts need. Also fill in `OPENAI_API_KEY`, which is needed only when the class has no usable VTT.
+
+```bash
+python -m shera
+```
+
+The app opens at `http://127.0.0.1:8765`. Put `class.mp4` and `class.vtt` (same file name) in `data/inbox/`, or paste their paths on the home page. Then import the class and authorize paid work, which is capped at USD 1.50 per class. Review the shortlist, render a phone preview, and approve. Finally, export; packages land in `data/exports/<job>/`.
+
+Run the tests with `pip install -e .[test]` and then `python -m pytest -q`. They generate their own synthetic media.
 
 See [contributing and maintenance](CONTRIBUTING.md) before changing product decisions.

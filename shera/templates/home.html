@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block main %}
+<section class="panel" aria-labelledby="setup-h">
+  <h2 id="setup-h">Setup</h2>
+  <ul class="setup">
+    {% for name, ok in setup.items() %}
+    <li><span class="badge {{ 'ok' if ok else 'warn' }}">{{ 'set' if ok else 'missing' }}</span> {{ name }}
+      {% if not ok %}<span class="muted">— {% if name == 'FFmpeg' %}install FFmpeg and put ffmpeg/ffprobe on PATH{% else %}add to .env, then restart{% endif %}</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="panel" aria-labelledby="import-h">
+  <h2 id="import-h">Import a class</h2>
+  {% if error %}<p class="alert fail" role="alert">{{ error }}</p>{% endif %}
+  <h3>Inbox <span class="muted mono">{{ inbox_dir }}</span></h3>
+  {% if inbox %}
+  <table>
+    <thead><tr><th scope="col">Recording</th><th scope="col">Transcript</th><th scope="col" class="num">Size</th><th scope="col"><span class="sr">Action</span></th></tr></thead>
+    <tbody>
+    {% for f in inbox %}
+    <tr>
+      <td>{{ f.path.name }}</td>
+      <td>{% if f.vtt %}{{ f.vtt.name }}{% else %}<span class="muted">no transcript</span>{% endif %}</td>
+      <td class="num">{{ f.size|bytes }}</td>
+      <td><form method="post" action="/import">
+        <input type="hidden" name="mp4" value="{{ f.path }}">
+        <input type="hidden" name="vtt" value="{{ f.vtt or '' }}">
+        <button type="submit">Import</button></form></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">No MP4 files in the inbox. Copy a class MP4 (and its .vtt with the same name) there, or enter paths below.</p>{% endif %}
+
+  <h3>From a path</h3>
+  <form method="post" action="/import" class="grid-form">
+    <label for="mp4">MP4 recording path</label>
+    <input id="mp4" name="mp4" required value="{{ form.mp4 or '' }}" placeholder="E:\Classes\2026-09-20 Writing Task 2.mp4">
+    <label for="vtt">VTT transcript path <span class="muted">(optional)</span></label>
+    <input id="vtt" name="vtt" value="{{ form.vtt or '' }}">
+    <div></div><button type="submit" class="primary">Import</button>
+  </form>
+</section>
+
+<section class="panel" aria-labelledby="jobs-h">
+  <h2 id="jobs-h">Classes</h2>
+  {% if jobs %}
+  <table>
+    <thead><tr><th scope="col">Title</th><th scope="col">Created</th><th scope="col">Stage</th><th scope="col">Status</th><th scope="col" class="num">Spend / cap</th><th scope="col" class="num">Disk</th></tr></thead>
+    <tbody>
+    {% for j in jobs %}
+    <tr>
+      <td><a href="/jobs/{{ j.id }}">{{ j.title }}</a></td>
+      <td class="num local-time" data-ts="{{ j.created }}">{{ j.created|int }}</td>
+      <td>{{ j.stage }}</td>
+      <td><span class="badge s-{{ j.status }}">{{ j.status }}</span></td>
+      <td class="num">{{ j.spent|usd }} / ${{ '%.2f'|format(CAP) }}</td>
+      <td class="num">{{ j.disk|bytes }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">No classes yet.</p>{% endif %}
+</section>
+{% endblock %}
