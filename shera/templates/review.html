@@ -25,6 +25,7 @@
     <div class="grid-form">
       <label for="category">Category</label>
       <select id="category" data-field>
+        {% if not rv.category %}<option value="" selected>— choose —</option>{% endif %}
         {% for k, label in CATEGORIES.items() %}<option value="{{ k }}" {% if rv.category == k %}selected{% endif %}>{{ label }}</option>{% endfor %}
       </select>
       <label for="tags">Tags <span class="muted">(comma-separated)</span></label>
@@ -97,7 +98,7 @@
     {% if d.error %}<p class="alert fail">Draft provider error: {{ d.error }}</p>{% endif %}
     {% if not d or d.error %}
       <p>{% if not d %}<span class="muted">No draft yet.</span>{% endif %}
-        <button type="button" id="draft-run">Draft posting text (paid)</button>
+        <button type="button" id="draft-run" {% if drafting %}disabled title="The job is drafting posting text now"{% endif %}>Draft posting text (paid)</button>
         <span id="draft-status" class="muted" role="status"></span></p>
     {% endif %}
     {% for p in ('facebook', 'youtube') %}

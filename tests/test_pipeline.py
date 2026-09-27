@@ -161,13 +161,78 @@ def test_export_packages_only_approved(env):
     jid = pipeline.start_job(src, vtt)
     pipeline.authorize(jid)
     short = sorted((c for c in db.candidates(jid) if c["shortlisted"]), key=lambda c: c["rank"])
+    pipeline.render_preview(short[0]["id"])
     db.update_review(short[0]["id"], status="approved", tags=["writing"])
     db.update_review(short[1]["id"], status="rejected")
+    db.update_review(short[2]["id"], status="approved")  # approved without a current preview: skipped, reported
     root = pipeline.export(jid)
     index = json.loads((root / "index.json").read_text(encoding="utf-8"))
     assert [i["candidate_id"] for i in index] == [short[0]["id"]]
+    skipped = json.loads((root / "skipped.json").read_text(encoding="utf-8"))
+    assert [s["candidate_id"] for s in skipped] == [short[2]["id"]]
     folder = root / index[0]["folder"]
     post = json.loads((folder / "post.json").read_text(encoding="utf-8"))
     assert post["source_sha256"] == "sha-fake" and post["tags"] == ["writing"] and post["problems"] == []
     assert (folder / "video.mp4").exists() and (folder / "thumbnail.jpg").exists()
     assert (folder / "captions.srt").read_text(encoding="utf-8").startswith("1\n00:00:00,000 --> ")
+
+
+def test_failed_export_keeps_previous_package(env, monkeypatch):
+    src, vtt, calls = env
+    jid = pipeline.start_job(src, vtt)
+    pipeline.authorize(jid)
+    cid = next(c["id"] for c in db.candidates(jid) if c["rank"] == 1)
+    pipeline.render_preview(cid)
+    db.update_review(cid, status="approved")
+    root = pipeline.export(jid)
+    monkeypatch.setattr(media, "thumbnail", lambda *a: (_ for _ in ()).throw(RuntimeError("disk full")))
+    with pytest.raises(RuntimeError):
+        pipeline.export(jid)
+    assert json.loads((root / "index.json").read_text(encoding="utf-8"))[0]["candidate_id"] == cid
+
+
+def test_prepare_leaves_in_flight_web_draft_alone(env):
+    src, vtt, calls = env
+    jid = pipeline.start_job(src, vtt)
+    db.update_job(jid, authorized_usd=config.CAP_USD)
+    pipeline._candidates(jid)
+    pipeline._score(jid)
+    top = next(c for c in db.candidates(jid) if c["rank"] == 1)
+    db.x("INSERT INTO paid_calls(job_id, key, kind, state, est_usd, created, updated) "
+         "VALUES (?, ?, 'draft', 'sent', 0.002, 0, 0)", jid, f"draft:{top['id']}")
+    pipeline._prepare(jid)  # would raise Indeterminate on the shared key without the skip
+    assert db.review(top["id"])["drafts"] is None
+
+
+def test_draft_never_overwrites_operator_text(env, monkeypatch):
+    src, vtt, calls = env
+    jid = pipeline.start_job(src, vtt)
+    db.update_job(jid, authorized_usd=config.CAP_USD)
+    pipeline._candidates(jid)
+    cid = db.candidates(jid)[0]["id"]
+    typed = {"facebook": {"title": "mine", "description": "", "cta": ""}, "youtube": {}}
+
+    def slow_draft(text, category):  # the operator saves while the paid call is out
+        db.update_review(cid, drafts=typed)
+        return {"facebook": {"title": "model", "description": "d", "cta": "c"}, "youtube": {}}, 0.001
+
+    monkeypatch.setattr(providers, "draft_post", slow_draft)
+    db.review(cid)
+    pipeline.draft(cid)
+    assert db.review(cid)["drafts"] == typed
+
+
+def test_ensure_review_fills_category_after_scoring(env):
+    src, vtt, calls = env
+    jid = pipeline.start_job(src, vtt)
+    db.update_job(jid, authorized_usd=config.CAP_USD)
+    pipeline._candidates(jid)
+    cid = db.candidates(jid)[0]["id"]
+    assert pipeline.ensure_review(cid)["category"] is None  # opened before scoring
+    pipeline._score(jid)
+    assert pipeline.ensure_review(cid)["category"] == "exam_tip"
+
+
+def test_state_hash_treats_missing_title_as_empty():
+    rv = {"start": 1, "end": 2, "layout": {"mode": "full"}, "captions": [], "title": None}
+    assert pipeline.state_hash(rv) == pipeline.state_hash({**rv, "title": ""})

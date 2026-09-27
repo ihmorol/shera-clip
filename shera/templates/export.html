@@ -16,6 +16,12 @@
   {% endif %}
 </section>
 
+{% if skipped %}
+<section class="panel" aria-labelledby="skip-h">
+  <h2 id="skip-h">Not exported <span class="badge warn">{{ skipped|length }}</span></h2>
+  <ul>{% for s in skipped %}<li><a href="/jobs/{{ job.id }}/clips/{{ s.candidate_id }}">Clip {{ s.candidate_id }}</a> (rank {{ s.rank or '–' }}): {{ s.reason }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
 {% for p in packages %}
 <section class="panel package" aria-labelledby="pkg-{{ p.candidate_id }}">
   <h2 id="pkg-{{ p.candidate_id }}">Rank {{ p.rank or '–' }} · clip {{ p.candidate_id }}

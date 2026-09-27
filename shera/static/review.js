@@ -5,6 +5,7 @@ const base = root.dataset.base;
 const data = JSON.parse($("data").textContent);
 const src = $("source");
 let dirty = false;
+let draftsDirty = false; // posting text is sent only when the operator edited it
 let state = data.state;
 
 const fmt = (s) => {
@@ -84,7 +85,7 @@ function body() {
     captions: [...document.querySelectorAll("#cap-rows tr")].map((r) => ({
       start: parseFloat(r.querySelector(".c-start").value), end: parseFloat(r.querySelector(".c-end").value),
       text: r.querySelector(".c-text").value })),
-    drafts: { facebook: post("facebook"), youtube: post("youtube") },
+    ...(draftsDirty ? { drafts: { facebook: post("facebook"), youtube: post("youtube") } } : {}),
   };
 }
 
@@ -97,18 +98,28 @@ async function api(path, payload) {
 }
 
 function markDirty() { dirty = true; $("save-status").textContent = "Unsaved changes"; render(); }
-root.addEventListener("input", (e) => { if (e.target.matches("[data-field]")) markDirty(); });
+root.addEventListener("input", (e) => {
+  if (!e.target.matches("[data-field]")) return;
+  if (e.target.closest("fieldset.post")) draftsDirty = true;
+  markDirty();
+});
 root.addEventListener("change", (e) => { if (e.target.matches("[data-field]")) { markDirty(); refreshSpan(); } });
 
 async function withBusy(btn, fn) {
   btn.disabled = true; btn.classList.add("loading"); btn.setAttribute("aria-busy", "true");
-  try { return await fn(); } finally { btn.classList.remove("loading"); btn.removeAttribute("aria-busy"); render(); }
+  try { return await fn(); } finally {
+    btn.disabled = false; btn.classList.remove("loading"); btn.removeAttribute("aria-busy"); render();
+  }
 }
 
 async function save() {
   try {
-    state = await api("", body());
-    dirty = false;
+    const j = await api("", body());
+    state = j;
+    dirty = draftsDirty = false;
+    $("start").value = j.start; $("end").value = j.end;
+    setCaptions(j.captions || []); // the server re-times captions when the start moves
+    refreshSpan();
     $("save-status").textContent = "Saved";
     return true;
   } catch (e) {

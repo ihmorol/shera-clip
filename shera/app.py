@@ -180,6 +180,14 @@ def import_(request: Request, mp4: str = Form(""), vtt: str = Form("")):
 
 # ---------- job ----------
 
+def _live(call):
+    """A 'sent' paid call still owned by a running pipeline thread or web task."""
+    with pipeline._lock:
+        if call["job_id"] in pipeline._running:
+            return True
+    return call["key"].startswith("draft:") and TASKS.get(call["key"], {}).get("state") == "running"
+
+
 def _job_page(request, job_id, error=None, status_code=200):
     job = _job_or_404(job_id)
     short, other = _ordered(job_id)
@@ -188,7 +196,8 @@ def _job_page(request, job_id, error=None, status_code=200):
     est = pipeline.estimate(job_id) if job["stage"] == "authorize" and job["status"] == "waiting" else None
     return page(request, "job.html", status_code, job=job, short=short, other=other, reviews=reviews,
                 spent=ledger.spent(job_id), est=est, error=error,
-                stuck=[c for c in calls if c["state"] == "indeterminate"],
+                stuck=[c for c in calls if c["state"] == "indeterminate" or (c["state"] == "sent" and not _live(c))],
+                inflight=[c for c in calls if c["state"] == "sent" and _live(c)],
                 approved=sum(r["status"] == "approved" for r in reviews.values()))
 
 
@@ -217,8 +226,11 @@ def retry_call(job_id: str, call_id: int):
     _job_or_404(job_id)
     if not db.one("SELECT id FROM paid_calls WHERE id=? AND job_id=?", call_id, job_id):
         raise HTTPException(404, "No such paid call")
+    call = db.one("SELECT * FROM paid_calls WHERE id=?", call_id)
+    if call["state"] == "sent" and not _live(call):  # orphaned: same as what a restart would record
+        db.x("UPDATE paid_calls SET state='indeterminate' WHERE id=?", call_id)
     ledger.resolve(call_id)
-    if not any(c["state"] == "indeterminate" for c in ledger.calls(job_id)):
+    if not any(c["state"] == "indeterminate" or (c["state"] == "sent" and not _live(c)) for c in ledger.calls(job_id)):
         pipeline.resume(job_id)
     return RedirectResponse(f"/jobs/{job_id}", 303)
 
@@ -234,6 +246,10 @@ def delete(request: Request, job_id: str):
 
 
 # ---------- review ----------
+
+def _drafting(job):
+    return job["stage"] == "prepare" and job["status"] == "running"
+
 
 def _state(rv):
     task = TASKS.get(f"render:{rv['candidate_id']}", {})
@@ -254,7 +270,7 @@ def review_page(request: Request, job_id: str, cid: int):
     short, other = _ordered(job_id)
     order = [x["id"] for x in short + other]
     i = order.index(cid)
-    return page(request, "review.html", job=job, c=c, rv=rv, near=near, state=_state(rv),
+    return page(request, "review.html", job=job, c=c, rv=rv, near=near, state=_state(rv), drafting=_drafting(job),
                 source_url=f"/media/jobs/{job_id}/source.mp4",
                 prev=order[i - 1] if i > 0 else None, next=order[i + 1] if i + 1 < len(order) else None,
                 bounds={"starts": [u["start"] for u in units], "ends": [u["end"] for u in units]})
@@ -279,22 +295,20 @@ def _box(b, label):
     return [x, y, w, h]
 
 
+def _retime(caps, shift, duration):
+    """Captions are relative to clip start: shift them when the start moves, drop those outside, clamp the rest."""
+    out = []
+    for c in caps:
+        s, e = c["start"] + shift, c["end"] + shift
+        if e > 0 and s < duration:
+            out.append({**c, "start": max(s, 0.0), "end": min(e, duration)})
+    return out
+
+
 def _clean(body, job, rv):
     """Validate a review save from the browser into update_review fields."""
     f = {}
-    if "start" in body or "end" in body:
-        start = _num(body.get("start", rv["start"]), 0, job["duration"] or 1e9, "Start")
-        end = _num(body.get("end", rv["end"]), 0, job["duration"] or 1e9, "End")
-        if end - start < 1:
-            raise HTTPException(422, "End must be at least 1 s after start")
-        f["start"], f["end"] = round(start, 3), round(end, 3)
-    if "layout" in body:
-        lay = body["layout"] or {}
-        if lay.get("mode") == "crop":
-            f["layout"] = {"mode": "crop", "crop": _box(lay.get("crop"), "Crop"),
-                           "inset": _box(lay["inset"], "Inset") if lay.get("inset") else None}
-        else:
-            f["layout"] = {"mode": "full"}
+    caps = rv["captions"] or []
     if "captions" in body:
         caps = []
         for n, row in enumerate(body["captions"] or [], 1):
@@ -303,9 +317,24 @@ def _clean(body, job, rv):
                 raise HTTPException(422, f"Caption {n} must end after it starts")
             caps.append({"start": s, "end": e, "text": str(row.get("text", "")).strip()})
         f["captions"] = caps
+    if "start" in body or "end" in body:
+        start = _num(body.get("start", rv["start"]), 0, job["duration"] or 1e9, "Start")
+        end = _num(body.get("end", rv["end"]), 0, job["duration"] or 1e9, "End")
+        if end - start < 1:
+            raise HTTPException(422, "End must be at least 1 s after start")
+        f["start"], f["end"] = round(start, 3), round(end, 3)
+        if f["start"] != rv["start"] or f["end"] != rv["end"] or "captions" in f:
+            f["captions"] = _retime(caps, rv["start"] - f["start"], f["end"] - f["start"])
+    if "layout" in body:
+        lay = body["layout"] or {}
+        if lay.get("mode") == "crop":
+            f["layout"] = {"mode": "crop", "crop": _box(lay.get("crop"), "Crop"),
+                           "inset": _box(lay["inset"], "Inset") if lay.get("inset") else None}
+        else:
+            f["layout"] = {"mode": "full"}
     if "title" in body:
         f["title"] = str(body["title"]).strip()
-    if "category" in body:
+    if body.get("category"):  # "" = still unchosen; leave it null
         if body["category"] not in CATEGORIES:
             raise HTTPException(422, "Unknown category")
         f["category"] = body["category"]
@@ -313,8 +342,8 @@ def _clean(body, job, rv):
         f["tags"] = [t.strip() for t in str(body["tags"]).split(",") if t.strip()]
     if "drafts" in body:
         typed = {p: {k: str((body["drafts"].get(p) or {}).get(k, "")).strip() for k in FIELDS} for p in PLATFORMS}
-        # Keep a stored provider error visible unless the operator actually typed posting text.
-        if any(v for p in typed.values() for v in p.values()) or not (rv["drafts"] or {}).get("error"):
+        # All-empty fields never replace stored drafts (a paid draft or a visible provider error).
+        if any(v for p in typed.values() for v in p.values()) or not rv["drafts"]:
             f["drafts"] = typed
     return f
 
@@ -327,12 +356,16 @@ async def save_review(request: Request, job_id: str, cid: int):
         body = await request.json()
     except ValueError:
         raise HTTPException(400, "Expected JSON")
-    fields = _clean(body, job, rv)
-    new = {**rv, **fields}
-    if rv["status"] == "approved" and pipeline.state_hash(new) != pipeline.state_hash(rv):
-        fields["status"] = "pending"  # the approved video changed; approval must be given again
-    db.update_review(cid, **fields)
-    return _state(db.review(cid))
+    _save(rv, _clean(body, job, rv))
+    rv = db.review(cid)
+    return {**_state(rv), "captions": rv["captions"], "start": rv["start"], "end": rv["end"]}
+
+
+def _save(rv, fields):
+    """Persist review fields; a change to the rendered video withdraws an approval."""
+    if rv["status"] == "approved" and pipeline.state_hash({**rv, **fields}) != pipeline.state_hash(rv):
+        fields["status"] = "pending"
+    db.update_review(rv["candidate_id"], **fields)
 
 
 @app.post("/jobs/{job_id}/clips/{cid}/captions/reset")
@@ -342,7 +375,7 @@ def reset_captions(job_id: str, cid: int):
     rv, units = pipeline.ensure_review(cid), _units(job_id)
     idx = [i for i, u in enumerate(units) if u["end"] > rv["start"] and u["start"] < rv["end"]]
     caps = cand.caption_lines(units, idx[0], idx[-1], rv["start"], rv["end"]) if idx else []
-    db.update_review(cid, captions=caps)
+    _save(rv, {"captions": caps})
     return {"captions": caps, **_state(db.review(cid))}
 
 
@@ -363,7 +396,9 @@ def preview(job_id: str, cid: int):
 @app.post("/jobs/{job_id}/clips/{cid}/draft")
 def redraft(job_id: str, cid: int):
     """Paid posting draft for this clip (the job's authorization and cap apply)."""
-    _job_or_404(job_id), _clip_or_404(job_id, cid)
+    job, _ = _job_or_404(job_id), _clip_or_404(job_id, cid)
+    if _drafting(job):
+        raise HTTPException(409, "The job is drafting posting text now; wait for it to finish.")
     _bg(f"draft:{cid}", lambda: pipeline.draft(cid))
     return _state(db.review(cid))
 
@@ -402,9 +437,10 @@ def export_page(request: Request, job_id: str, error: str = ""):
             packages.append({**entry, "path": folder, "files": sorted(p.name for p in folder.iterdir()),
                              "posted": (rv or {}).get("posted") or {},
                              "video_url": _media_url(folder / "video.mp4") if (folder / "video.mp4").exists() else None})
+    skipped = json.loads((root / "skipped.json").read_text(encoding="utf-8")) if (root / "skipped.json").exists() else []
     approved = db.one("SELECT COUNT(*) AS n FROM reviews r JOIN candidates c ON c.id=r.candidate_id "
                       "WHERE c.job_id=? AND r.status='approved'", job_id)["n"]
-    return page(request, "export.html", job=job, root=root, packages=packages, approved=approved,
+    return page(request, "export.html", job=job, root=root, packages=packages, approved=approved, skipped=skipped,
                 task=TASKS.get(f"export:{job_id}", {}), error=error, can_open=hasattr(os, "startfile"))
 
 

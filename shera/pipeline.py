@@ -198,24 +198,36 @@ def _score(job_id):
 
 def ensure_review(cid):
     """Review row with default captions and full-frame layout filled in."""
-    rv = db.review(cid)
+    rv, c = db.review(cid), db.candidate(cid)
+    if rv["category"] is None and c["category"]:  # review opened before scoring
+        db.update_review(cid, category=c["category"])
+        rv = db.review(cid)
     if rv["captions"] is None:
-        c = db.candidate(cid)
         caps = cand.caption_lines(_units(c["job_id"]), c["u0"], c["u1"], rv["start"], rv["end"])
         db.update_review(cid, captions=caps, layout=rv["layout"] or {"mode": "full"})
         rv = db.review(cid)
     return rv
 
 
+def drafts_open(d):
+    """True when drafts may be (re)filled: nothing stored, a provider error, or only empty fields."""
+    return not d or "error" in d or not any(v for p in ("facebook", "youtube") for v in (d.get(p) or {}).values())
+
+
 def draft(cid):
-    """Paid posting draft for one candidate; a provider failure is stored, never replaced by made-up text."""
+    """Paid posting draft for one candidate; a provider failure is stored, never replaced by made-up text.
+    Text the operator typed meanwhile is never overwritten."""
     c = db.candidate(cid)
     try:
         d = ledger.call(c["job_id"], f"draft:{cid}", "draft", config.DRAFT_EST_USD,
                         lambda: providers.draft_post(c["text"], c["category"]))
     except ledger.ProviderError as e:
         d = {"error": str(e)}
-    db.update_review(cid, drafts=d)
+    with db.LOCK:
+        current = db.review(cid)["drafts"]
+        if not drafts_open(current):
+            return current
+        db.update_review(cid, drafts=d)
     return d
 
 
@@ -224,7 +236,8 @@ def _prepare(job_id):
     short = sorted((c for c in db.candidates(job_id) if c["shortlisted"]), key=lambda c: c["rank"])
     for n, c in enumerate(short):
         rv = ensure_review(c["id"])
-        if not rv["drafts"] or "error" in rv["drafts"]:
+        in_flight = db.one("SELECT id FROM paid_calls WHERE job_id=? AND key=? AND state='sent'", job_id, f"draft:{c['id']}")
+        if drafts_open(rv["drafts"]) and not in_flight:  # an in-flight web draft task owns that call
             draft(c["id"])
         db.update_job(job_id, progress=(n + 1) / len(short))
 
@@ -239,12 +252,13 @@ def delete_job(job_id):
     db.x("DELETE FROM jobs WHERE id=?", job_id)
     shutil.rmtree(job_dir(job_id), ignore_errors=True)
     shutil.rmtree(config.DATA / "exports" / job_id, ignore_errors=True)
+    shutil.rmtree(config.DATA / "exports" / (job_id + ".part"), ignore_errors=True)
 
 
 def state_hash(rv):
     """Fingerprint of everything that changes the rendered video; the preview file name carries it."""
-    keys = ("start", "end", "layout", "captions", "title")
-    return hashlib.sha1(json.dumps([rv[k] for k in keys], sort_keys=True).encode()).hexdigest()[:12]
+    vals = [rv["start"], rv["end"], rv["layout"] or {"mode": "full"}, rv["captions"] or [], rv["title"] or ""]
+    return hashlib.sha1(json.dumps(vals, sort_keys=True).encode()).hexdigest()[:12]
 
 
 def preview_current(rv):
@@ -278,15 +292,22 @@ def srt(captions):
 
 
 def export(job_id):
-    """Package approved reviews into DATA/exports/<job_id>/; returns that folder."""
+    """Package approved reviews into DATA/exports/<job_id>/; returns that folder.
+    Builds in a .part folder and swaps it in on success, so a failed export keeps the previous package.
+    Approved clips whose preview no longer matches the saved edits are skipped and listed in skipped.json."""
     job, root = db.get_job(job_id), config.DATA / "exports" / job_id
-    shutil.rmtree(root, ignore_errors=True)
-    index = []
+    tmp = root.with_name(job_id + ".part")
+    shutil.rmtree(tmp, ignore_errors=True)
+    index, skipped = [], []
     for c in db.candidates(job_id):
         rv = db.one("SELECT * FROM reviews WHERE candidate_id=? AND status='approved'", c["id"])
         if not rv:
             continue
-        folder = root / f"{c['rank'] or 0:02d}-{c['id']}"
+        if not preview_current(rv):
+            skipped.append({"candidate_id": c["id"], "rank": c["rank"],
+                            "reason": "approved, but its preview does not match the saved edits; render and approve again"})
+            continue
+        folder = tmp / f"{c['rank'] or 0:02d}-{c['id']}"
         folder.mkdir(parents=True)
         video = folder / "video.mp4"
         media.render(job_dir(job_id) / "source.mp4", rv["start"], rv["end"], rv["layout"], rv["captions"],
@@ -300,6 +321,9 @@ def export(job_id):
                 "problems": media.verify(video, rv["end"] - rv["start"])}
         (folder / "post.json").write_text(json.dumps(post, ensure_ascii=False, indent=2), encoding="utf-8")
         index.append({"folder": folder.name, "candidate_id": c["id"], "rank": c["rank"], "problems": post["problems"]})
-    root.mkdir(parents=True, exist_ok=True)
-    (root / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.mkdir(parents=True, exist_ok=True)
+    (tmp / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+    (tmp / "skipped.json").write_text(json.dumps(skipped, ensure_ascii=False, indent=2), encoding="utf-8")
+    shutil.rmtree(root, ignore_errors=True)
+    tmp.rename(root)
     return root

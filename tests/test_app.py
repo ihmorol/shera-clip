@@ -90,12 +90,13 @@ def test_review_save_round_trip_persists(client):
     assert client.get(f"/jobs/{job_id}/clips/{cid}").status_code == 200
     body = {"start": 12.5, "end": 44, "title": "Answer the exact question", "category": "common_mistake",
             "tags": "Writing, Task 2", "layout": {"mode": "crop", "crop": [0, 0, 0.75, 1], "inset": None},
-            "captions": [{"start": 0, "end": 2, "text": "প্রশ্নটা ঠিকমতো পড়ো"}],
+            "captions": [{"start": 3, "end": 5, "text": "প্রশ্নটা ঠিকমতো পড়ো"}],
             "drafts": {"facebook": {"title": "t", "description": "d", "cta": "c"}, "youtube": {}}}
     assert client.post(f"/jobs/{job_id}/clips/{cid}", json=body).status_code == 200
     rv = db.review(cid)
     assert (rv["start"], rv["end"], rv["category"], rv["tags"]) == (12.5, 44, "common_mistake", ["Writing", "Task 2"])
     assert rv["layout"]["crop"] == [0, 0, 0.75, 1] and rv["captions"][0]["text"] == "প্রশ্নটা ঠিকমতো পড়ো"
+    assert (rv["captions"][0]["start"], rv["captions"][0]["end"]) == (0.5, 2.5)  # re-timed to the new start
     assert rv["drafts"]["facebook"]["title"] == "t"
     bad = client.post(f"/jobs/{job_id}/clips/{cid}", json={"layout": {"mode": "crop", "crop": [0.5, 0, 0.8, 1]}})
     assert bad.status_code == 422
@@ -133,3 +134,72 @@ def test_indeterminate_call_retry_resolves_then_resumes(client, monkeypatch):
     client.post(f"/jobs/{job_id}/calls/{call_id}/retry")
     assert db.one("SELECT state FROM paid_calls WHERE id=?", call_id)["state"] == "abandoned"
     assert resumed == [job_id]
+
+
+def _approved_with_preview(cid, monkeypatch):
+    monkeypatch.setattr(pipeline.media, "render", lambda *a, **k: a[6].write_bytes(b"mp4"))
+    pipeline.render_preview(cid)
+    db.update_review(cid, status="approved")
+
+
+def test_caption_rebuild_withdraws_approval(client, monkeypatch):
+    job_id, cid = make_job()
+    client.get(f"/jobs/{job_id}/clips/{cid}")
+    db.update_review(cid, captions=[{"start": 0, "end": 1, "text": "edited"}])
+    _approved_with_preview(cid, monkeypatch)
+    client.post(f"/jobs/{job_id}/clips/{cid}/captions/reset")
+    assert db.review(cid)["status"] == "pending"
+
+
+def test_saves_without_draft_edits_keep_paid_drafts(client):
+    job_id, cid = make_job()
+    client.get(f"/jobs/{job_id}/clips/{cid}")
+    paid = {"facebook": {"title": "paid", "description": "d", "cta": "c"}, "youtube": {"title": "y"}}
+    db.update_review(cid, drafts=paid)
+    client.post(f"/jobs/{job_id}/clips/{cid}", json={"title": "x"})
+    empty = {p: {"title": "", "description": "", "cta": ""} for p in ("facebook", "youtube")}
+    client.post(f"/jobs/{job_id}/clips/{cid}", json={"drafts": empty})  # a stale page
+    assert db.review(cid)["drafts"] == paid
+
+
+def test_posting_text_save_keeps_approval_of_untitled_clip(client, monkeypatch):
+    job_id, cid = make_job()
+    client.get(f"/jobs/{job_id}/clips/{cid}")
+    assert db.review(cid)["title"] is None
+    _approved_with_preview(cid, monkeypatch)
+    rv = db.review(cid)
+    body = {"start": rv["start"], "end": rv["end"], "title": "", "layout": rv["layout"], "captions": rv["captions"],
+            "drafts": {"facebook": {"title": "t"}, "youtube": {}}}
+    client.post(f"/jobs/{job_id}/clips/{cid}", json=body)
+    assert db.review(cid)["status"] == "approved"
+
+
+def test_moving_start_retimes_captions(client):
+    job_id, cid = make_job()  # review span 10..45
+    client.get(f"/jobs/{job_id}/clips/{cid}")
+    caps = [{"start": 0, "end": 2, "text": "a"}, {"start": 3, "end": 6, "text": "b"}, {"start": 33, "end": 35, "text": "c"}]
+    r = client.post(f"/jobs/{job_id}/clips/{cid}", json={"start": 14, "end": 40, "captions": caps}).json()
+    # shift by -4 into a 26 s clip: "a" ends before the new start, "b" is clamped to 0..2, "c" starts after the end
+    assert [c["text"] for c in r["captions"]] == ["b"]
+    assert r["captions"][0]["start"] == 0 and r["captions"][0]["end"] == 2
+    assert db.review(cid)["captions"] == r["captions"]
+
+
+def test_orphan_sent_call_shows_and_draft_refused_while_preparing(client):
+    job_id, cid = make_job(status="paused", stage="prepare")
+    db.x("INSERT INTO paid_calls(job_id, key, kind, state, est_usd, created, updated) "
+         "VALUES (?, 'draft:99', 'draft', 'sent', 0.002, 0, 0)", job_id)
+    html = client.get(f"/jobs/{job_id}").text
+    assert "needs reconciliation" in html and "draft:99" in html
+    db.update_job(job_id, status="running")
+    assert client.post(f"/jobs/{job_id}/clips/{cid}/draft").status_code == 409
+    assert "disabled" in client.get(f"/jobs/{job_id}/clips/{cid}").text.split('id="draft-run"')[1][:20]
+
+
+def test_unscored_category_shows_choose_option(client):
+    job_id, cid = make_job()
+    db.x("UPDATE candidates SET category=NULL, score=NULL")
+    html = client.get(f"/jobs/{job_id}/clips/{cid}").text
+    assert '<option value="" selected>— choose —</option>' in html
+    client.post(f"/jobs/{job_id}/clips/{cid}", json={"category": "", "title": "t"})
+    assert db.review(cid)["category"] is None

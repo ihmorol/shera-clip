@@ -41,11 +41,12 @@
   {% if job.status in ('failed', 'paused') %}
   <div class="alert {{ 'fail' if job.status == 'failed' else 'attn' }}" role="alert">
     <p><strong>{{ 'Failed' if job.status == 'failed' else 'Paused' }}:</strong> {{ job.error }}</p>
+    {% if inflight %}<p>In progress: {% for c in inflight %}<span class="num">{{ c.key }}</span> {% endfor %}— wait for it to finish, then resume.</p>{% endif %}
     {% if stuck %}
-      <p>These paid calls may have been sent without a recorded answer. Check the provider dashboard first; retrying may bill again.</p>
+      <p>These paid calls may have been sent without a recorded answer (needs reconciliation). Check the provider dashboard first; retrying may bill again.</p>
       <ul>
       {% for c in stuck %}
-        <li class="num">{{ c.kind }} · {{ c.key }} · est {{ c.est_usd|usd }}
+        <li class="num">{{ c.kind }} · {{ c.key }} · {{ c.state }} · est {{ c.est_usd|usd }}
           <form method="post" action="/jobs/{{ job.id }}/calls/{{ c.id }}/retry" class="inline" data-confirm="Retry {{ c.key }}? The provider may bill again."><button type="submit">Retry (may bill again)</button></form></li>
       {% endfor %}
       </ul>
