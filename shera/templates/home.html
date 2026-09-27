@@ -1,66 +1,85 @@
 {% extends "base.html" %}
 {% block main %}
-<section class="panel" aria-labelledby="setup-h">
-  <h2 id="setup-h">Setup</h2>
-  <ul class="setup">
-    {% for name, ok in setup.items() %}
-    <li><span class="badge {{ 'ok' if ok else 'warn' }}">{{ 'set' if ok else 'missing' }}</span> {{ name }}
-      {% if not ok %}<span class="muted">— {% if name == 'FFmpeg' %}install FFmpeg and put ffmpeg/ffprobe on PATH{% else %}add to .env, then restart{% endif %}</span>{% endif %}</li>
+<div class="page-head">
+  <h1>Turn a class into clips</h1>
+  <p class="lede">Pick a class recording. Shera Clip finds its best teaching moments; you watch each one, trim it, and approve the ones worth posting.</p>
+</div>
+
+{% if false in setup.values() %}
+<section class="panel alert attn" aria-labelledby="setup-h">
+  <h2 id="setup-h">Finish setup first</h2>
+  <ul class="plain">
+    {% for name, ok in setup.items() if not ok %}
+    <li><strong>{{ name }}</strong> is missing: {% if name == 'FFmpeg' %}install FFmpeg and put <span class="mono">ffmpeg</span> and <span class="mono">ffprobe</span> on PATH{% else %}add <span class="mono">OPENROUTER_API_KEY</span> to <span class="mono">.env</span>, then restart Shera Clip{% endif %}.</li>
     {% endfor %}
   </ul>
 </section>
+{% endif %}
 
 <section class="panel" aria-labelledby="import-h">
   <h2 id="import-h">Import a class</h2>
   {% if error %}<p class="alert fail" role="alert">{{ error }}</p>{% endif %}
-  <h3>Inbox <span class="muted mono">{{ inbox_dir }}</span></h3>
+  <form method="post" action="/import" class="import-form">
+    <label for="mp4">Class recording <span class="muted">(.mp4)</span></label>
+    <div class="pick">
+      <input id="mp4" name="mp4" value="{{ form.mp4 or '' }}" placeholder="Choose a file, or paste its full path" autocomplete="off" spellcheck="false">
+      <button type="button" id="mp4-choose"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg>Choose…</button>
+    </div>
+    <label for="vtt">Zoom transcript <span class="muted">(.vtt, optional — without it the audio is transcribed for a few cents)</span></label>
+    <input id="vtt" name="vtt" value="{{ form.vtt or '' }}" placeholder="Paste the .vtt path if you have one" autocomplete="off" spellcheck="false">
+    <div><button type="submit" class="primary">Import class</button></div>
+  </form>
+
   {% if inbox %}
-  <table>
-    <thead><tr><th scope="col">Recording</th><th scope="col">Transcript</th><th scope="col" class="num">Size</th><th scope="col"><span class="sr">Action</span></th></tr></thead>
-    <tbody>
+  <h3>Or pick from the inbox folder <span class="muted mono">{{ inbox_dir }}</span></h3>
+  <ul class="rows">
     {% for f in inbox %}
-    <tr>
-      <td>{{ f.path.name }}</td>
-      <td>{% if f.vtt %}{{ f.vtt.name }}{% else %}<span class="muted">no transcript</span>{% endif %}</td>
-      <td class="num">{{ f.size|bytes }}</td>
-      <td><form method="post" action="/import">
+    <li class="row">
+      <svg class="i lead" aria-hidden="true"><use href="#i-film"/></svg>
+      <span class="grow"><strong>{{ f.path.name }}</strong>
+        <span class="muted">· {{ f.size|bytes }} · {% if f.vtt %}with transcript{% else %}no transcript{% endif %}</span></span>
+      <form method="post" action="/import">
         <input type="hidden" name="mp4" value="{{ f.path }}">
         <input type="hidden" name="vtt" value="{{ f.vtt or '' }}">
-        <button type="submit">Import</button></form></td>
-    </tr>
+        <button type="submit">Import</button></form>
+    </li>
     {% endfor %}
-    </tbody>
-  </table>
-  {% else %}<p class="muted">No MP4 files in the inbox. Copy a class MP4 (and its .vtt with the same name) there, or enter paths below.</p>{% endif %}
-
-  <h3>From a path</h3>
-  <form method="post" action="/import" class="grid-form">
-    <label for="mp4">MP4 recording path</label>
-    <input id="mp4" name="mp4" required value="{{ form.mp4 or '' }}" placeholder="E:\Classes\2026-09-20 Writing Task 2.mp4">
-    <label for="vtt">VTT transcript path <span class="muted">(optional)</span></label>
-    <input id="vtt" name="vtt" value="{{ form.vtt or '' }}">
-    <div></div><button type="submit" class="primary">Import</button>
-  </form>
+  </ul>
+  {% endif %}
 </section>
 
+<dialog id="chooser" class="chooser" aria-labelledby="chooser-h">
+  <h2 id="chooser-h">Choose a class recording</h2>
+  <p id="chooser-path" class="mono muted"></p>
+  <ul id="chooser-list" class="chooser-list"></ul>
+  <p id="chooser-empty" class="muted" hidden>No folders or MP4 files here.</p>
+  <p id="chooser-status" class="muted" hidden></p>
+  <div class="chooser-actions">
+    <button type="button" id="chooser-up" disabled><svg class="i" aria-hidden="true"><use href="#i-up"/></svg>Up one folder</button>
+    <button type="button" id="chooser-cancel">Cancel</button>
+  </div>
+</dialog>
+
 <section class="panel" aria-labelledby="jobs-h">
-  <h2 id="jobs-h">Classes</h2>
+  <h2 id="jobs-h">Your classes</h2>
   {% if jobs %}
   <table>
-    <thead><tr><th scope="col">Title</th><th scope="col">Created</th><th scope="col">Stage</th><th scope="col">Status</th><th scope="col" class="num">Spend / cap</th><th scope="col" class="num">Disk</th></tr></thead>
+    <thead><tr><th scope="col">Class</th><th scope="col" class="opt">Imported</th><th scope="col" class="opt">Step</th><th scope="col">State</th><th scope="col" class="num">Spent of ${{ '%.2f'|format(CAP) }}</th><th scope="col" class="num opt">On disk</th></tr></thead>
     <tbody>
     {% for j in jobs %}
     <tr>
       <td><a href="/jobs/{{ j.id }}">{{ j.title }}</a></td>
-      <td class="num local-time" data-ts="{{ j.created }}">{{ j.created|int }}</td>
-      <td>{{ j.stage }}</td>
-      <td><span class="badge s-{{ j.status }}">{{ j.status }}</span></td>
-      <td class="num">{{ j.spent|usd }} / ${{ '%.2f'|format(CAP) }}</td>
-      <td class="num">{{ j.disk|bytes }}</td>
+      <td class="muted local-time opt" data-ts="{{ j.created }}">{{ j.created|int }}</td>
+      <td class="opt">{{ STAGE_LABELS.get(j.stage, j.stage) }}</td>
+      <td><span class="badge s-{{ j.status }}">{{ STATUS_LABELS.get(j.status, j.status) }}</span></td>
+      <td class="num">{{ j.spent|usd }}</td>
+      <td class="num muted opt">{{ j.disk|bytes }}</td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
-  {% else %}<p class="muted">No classes yet.</p>{% endif %}
+  {% else %}<p class="muted">No classes yet. Import a recording above to start.</p>{% endif %}
 </section>
 {% endblock %}
+
+{% block scripts %}<script src="/static/chooser.js" defer></script>{% endblock %}

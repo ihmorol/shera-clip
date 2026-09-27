@@ -107,11 +107,22 @@ def _speech(job_id):
     return [tuple(x) for x in _read(path)]
 
 
+def check_audible(speech, duration):
+    """Stop before any paid step when the recording is (nearly) silent: transcribing silence
+    bills for nothing and makes Whisper invent text."""
+    heard = sum(e - s for s, e in speech)
+    if heard < min(60, 0.05 * duration):
+        raise ValueError(f"The recording's audio is silent ({heard:.0f} s of sound in {duration / 60:.0f} min), "
+                         "so there is nothing to transcribe. Check that the MP4 has the class audio; "
+                         "no paid call was made.")
+
+
 def _transcript(job_id):
     d, job = job_dir(job_id), db.get_job(job_id)
     if (d / "transcript.json").exists():
         return
     db.update_job(job_id, stage="transcript")
+    check_audible(_speech(job_id), job["duration"])
     if not (d / "source.vtt").exists():
         db.update_job(job_id, flags=["no VTT transcript; paid transcription needed"])
         return
@@ -262,21 +273,33 @@ def state_hash(rv):
     return hashlib.sha1(json.dumps(vals, sort_keys=True).encode()).hexdigest()[:12]
 
 
+def landscape_path(portrait):
+    """The landscape preview/export sits next to its portrait file."""
+    return Path(portrait).with_name(Path(portrait).stem + "-landscape.mp4")
+
+
 def preview_current(rv):
-    """True when the saved preview was rendered from the review's current saved state."""
+    """True when both saved previews were rendered from the review's current saved state."""
     p = rv["preview_path"] and Path(rv["preview_path"])
-    return bool(p) and p.name == f"{rv['candidate_id']}-{state_hash(rv)}.mp4" and p.exists()
+    return (bool(p) and p.name == f"{rv['candidate_id']}-{state_hash(rv)}.mp4" and p.exists()
+            and landscape_path(p).exists())
+
+
+def _render_both(src, rv, portrait, landscape, preset="veryfast"):
+    args = (src, rv["start"], rv["end"], rv["layout"], rv["captions"], rv["title"] or "")
+    media.render(*args, portrait, preset=preset)
+    media.render(*args, landscape, preset=preset, landscape=True)
 
 
 def render_preview(cid):
     rv, c = ensure_review(cid), db.candidate(cid)
     out = job_dir(c["job_id"]) / "previews" / f"{cid}-{state_hash(rv)}.mp4"
     out.parent.mkdir(parents=True, exist_ok=True)
-    media.render(job_dir(c["job_id"]) / "source.mp4", rv["start"], rv["end"], rv["layout"], rv["captions"],
-                 rv["title"] or "", out)
+    _render_both(job_dir(c["job_id"]) / "source.mp4", rv, out, landscape_path(out))
     db.update_review(cid, preview_path=str(out))
+    keep = {out, landscape_path(out)}
     for old in out.parent.glob(f"{cid}-*.mp4"):
-        if old != out:
+        if old not in keep:
             with contextlib.suppress(OSError):  # a browser may still hold the old file open
                 old.unlink()
     return out
@@ -310,16 +333,18 @@ def export(job_id):
             continue
         folder = tmp / f"{c['rank'] or 0:02d}-{c['id']}"
         folder.mkdir(parents=True)
-        video = folder / "video.mp4"
-        media.render(job_dir(job_id) / "source.mp4", rv["start"], rv["end"], rv["layout"], rv["captions"],
-                     rv["title"] or "", video, preset="medium")
+        video = folder / "portrait.mp4"
+        _render_both(job_dir(job_id) / "source.mp4", rv, video, folder / "landscape.mp4", preset="medium")
         (folder / "captions.srt").write_text(srt(rv["captions"] or []), encoding="utf-8")
         media.thumbnail(video, folder / "thumbnail.jpg", (rv["end"] - rv["start"]) / 2)
+        dur = rv["end"] - rv["start"]
+        problems = ([f"portrait: {x}" for x in media.verify(video, dur)] +
+                    [f"landscape: {x}" for x in media.verify(folder / "landscape.mp4", dur, (media.H, media.W))])
         drafts = rv["drafts"] or {}
         post = {"job_id": job_id, "candidate_id": c["id"], "rank": c["rank"], "category": rv["category"],
                 "tags": rv["tags"] or [], "facebook": drafts.get("facebook"), "youtube": drafts.get("youtube"),
                 "source_sha256": job["source_sha256"], "source_start": rv["start"], "source_end": rv["end"],
-                "problems": media.verify(video, rv["end"] - rv["start"])}
+                "problems": problems}
         (folder / "post.json").write_text(json.dumps(post, ensure_ascii=False, indent=2), encoding="utf-8")
         index.append({"folder": folder.name, "candidate_id": c["id"], "rank": c["rank"], "problems": post["problems"]})
     tmp.mkdir(parents=True, exist_ok=True)

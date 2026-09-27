@@ -1,106 +1,125 @@
 {% extends "base.html" %}
 {% set refresh = job.status == 'running' %}
 {% block title %}{{ job.title }} · Shera Clip{% endblock %}
-{% block crumbs %}<a href="/">Classes</a> / <span>{{ job.title }}</span>{% endblock %}
+{% block crumbs %}<a href="/">Classes</a><span aria-hidden="true">/</span><span>{{ job.title }}</span>{% endblock %}
 {% block main %}
+{% set cur = STAGES.index(job.stage) if job.stage in STAGES else 0 %}
 <section class="panel" aria-labelledby="job-h">
-  <h1 id="job-h">{{ job.title }}</h1>
-  <ol class="rail" aria-label="Stages">
-    {% set cur = STAGES.index(job.stage) if job.stage in STAGES else 0 %}
+  <div class="job-head">
+    <h1 id="job-h">{{ job.title }}</h1>
+    <dl class="readouts">
+      <div><dt>Step</dt><dd>{{ cur + 1 }}/{{ STAGES|length }} · {{ STAGE_LABELS[job.stage] if job.stage in STAGE_LABELS else job.stage }}</dd></div>
+      <div><dt>Spent</dt><dd class="num">{{ spent|usd }} <span class="muted">of ${{ '%.2f'|format(CAP) }}</span></dd></div>
+      <div><dt>Approved</dt><dd class="num">{{ approved }} clip{{ '' if approved == 1 else 's' }}</dd></div>
+    </dl>
+  </div>
+
+  <ol class="strip" aria-label="Steps">
     {% for s in STAGES %}
-    <li class="{{ 'done' if loop.index0 < cur or job.status == 'done' else ('current s-' ~ job.status if loop.index0 == cur else '') }}"
-        {% if loop.index0 == cur %}aria-current="step"{% endif %}>{{ s }}</li>
+    <li class="{{ 'done' if loop.index0 < cur else ('current s-' ~ job.status if loop.index0 == cur else '') }}"
+        {% if loop.index0 == cur %}aria-current="step"{% endif %}><span class="n num">{{ loop.index }}</span>{{ STAGE_LABELS[s] }}</li>
     {% endfor %}
   </ol>
 
-  <p class="status-line"><span class="badge s-{{ job.status }}">{{ job.status }}</span>
-    stage <strong>{{ job.stage }}</strong>
-    {% if job.status == 'running' %}· <progress max="1" value="{{ job.progress or 0 }}" aria-label="Stage progress"></progress>
-      <span class="num">{{ ((job.progress or 0) * 100)|round|int }}%</span> <span class="muted">· refreshes every 2 s</span>{% endif %}</p>
-
-  <p class="num">Spend {{ spent|usd }} · authorized {{ ('$%.2f'|format(job.authorized_usd)) if job.authorized_usd is not none else 'not yet' }} · hard cap ${{ '%.2f'|format(CAP) }}</p>
-
   {% if error %}<p class="alert fail" role="alert">{{ error }}</p>{% endif %}
 
-  {% if job.status == 'waiting' and est %}
-  <div class="alert attn">
-    <h2>Authorize paid work</h2>
-    <p>One authorization covers every paid call for this class. The ledger stops before the hard cap.</p>
+  {% if job.status == 'running' %}
+  <div class="next" role="status">
+    <p><strong>Working:</strong> {{ STAGE_LABELS.get(job.stage, job.stage) }}… You can leave this page; the work continues and this page refreshes itself.</p>
+    <div class="meter"><progress max="1" value="{{ job.progress or 0 }}" aria-label="Step progress"></progress><span class="num">{{ ((job.progress or 0) * 100)|round|int }}%</span></div>
+  </div>
+
+  {% elif job.status == 'waiting' and est %}
+  <div class="next attn">
+    <h2>Approve the cost to continue</h2>
+    <p>The next steps use paid AI services. This is the estimate; the real cost is usually lower, and work stops before the ${{ '%.2f'|format(CAP) }} cap.</p>
     <table class="compact">
       <tbody>
-      <tr><th scope="row">Transcription ({{ stt_model }})</th><td class="num">{{ est.transcription|usd }}</td></tr>
-      <tr><th scope="row">Ranking (Jev, {{ est.windows }} windows)</th><td class="num">{{ est.ranking|usd }}</td></tr>
-      <tr><th scope="row">Posting drafts (up to 10)</th><td class="num">{{ est.drafts|usd }}</td></tr>
-      <tr><th scope="row">Estimate</th><td class="num"><strong>{{ job.estimate_usd|usd }}</strong></td></tr>
+      <tr><th scope="row">Transcribe the audio <span class="muted">({{ stt_model }})</span></th><td class="num">{{ est.transcription|usd }}</td></tr>
+      <tr><th scope="row">Score {{ est.windows }} possible moments</th><td class="num">{{ est.ranking|usd }}</td></tr>
+      <tr><th scope="row">Draft posting text for up to 10 clips</th><td class="num">{{ est.drafts|usd }}</td></tr>
+      <tr class="total"><th scope="row">Estimate</th><td class="num">{{ (est.transcription + est.ranking + est.drafts)|usd }}</td></tr>
       </tbody>
     </table>
-    <form method="post" action="/jobs/{{ job.id }}/authorize"><button class="primary" type="submit">Authorize paid work (hard cap ${{ '%.2f'|format(CAP) }})</button></form>
+    <form method="post" action="/jobs/{{ job.id }}/authorize"><button class="primary" type="submit">Approve up to ${{ '%.2f'|format(CAP) }} and continue</button></form>
   </div>
-  {% endif %}
 
-  {% if job.status in ('failed', 'paused') %}
-  <div class="alert {{ 'fail' if job.status == 'failed' else 'attn' }}" role="alert">
-    <p><strong>{{ 'Failed' if job.status == 'failed' else 'Paused' }}:</strong> {{ job.error }}</p>
-    {% if inflight %}<p>In progress: {% for c in inflight %}<span class="num">{{ c.key }}</span> {% endfor %}— wait for it to finish, then resume.</p>{% endif %}
+  {% elif job.status in ('failed', 'paused') %}
+  <div class="next {{ 'fail' if job.status == 'failed' else 'attn' }}" role="alert">
+    <h2>{{ 'Stopped by a problem' if job.status == 'failed' else 'Paused' }}</h2>
+    <p>{{ job.error }}</p>
+    {% if inflight %}<p>Still running: {% for c in inflight %}<span class="mono">{{ c.key }}</span> {% endfor %}— wait for it to finish, then resume.</p>{% endif %}
     {% if stuck %}
-      <p>These paid calls may have been sent without a recorded answer (needs reconciliation). Check the provider dashboard first; retrying may bill again.</p>
-      <ul>
+      <p>These paid calls may have reached the provider without an answer being saved. Check your OpenRouter activity page first: retrying can charge again.</p>
+      <ul class="plain">
       {% for c in stuck %}
-        <li class="num">{{ c.kind }} · {{ c.key }} · {{ c.state }} · est {{ c.est_usd|usd }}
-          <form method="post" action="/jobs/{{ job.id }}/calls/{{ c.id }}/retry" class="inline" data-confirm="Retry {{ c.key }}? The provider may bill again."><button type="submit">Retry (may bill again)</button></form></li>
+        <li class="num">{{ c.kind }} · <span class="mono">{{ c.key }}</span> · estimate {{ c.est_usd|usd }}
+          <form method="post" action="/jobs/{{ job.id }}/calls/{{ c.id }}/retry" class="inline" data-confirm="Retry {{ c.key }}? The provider may charge again."><button type="submit">Retry (may charge again)</button></form></li>
       {% endfor %}
       </ul>
     {% else %}
-      <p>Next: fix the cause above (a missing key goes in .env, then restart Shera Clip), then resume. Completed paid calls are never repeated.</p>
-      <form method="post" action="/jobs/{{ job.id }}/resume"><button type="submit">Resume</button></form>
+      <p class="muted">Fix the cause above, then resume. A missing key goes in <span class="mono">.env</span> and needs a restart. Paid steps that already finished are never repeated.</p>
+      <form method="post" action="/jobs/{{ job.id }}/resume"><button type="submit" class="primary">Resume</button></form>
+    {% endif %}
+  </div>
+
+  {% elif job.status == 'done' %}
+  <div class="next">
+    {% if short %}
+    <p><strong>Next:</strong> review the {{ short|length }} suggested clip{{ '' if short|length == 1 else 's' }} below. Open one, watch it, fix anything, render the previews, then approve or reject.{% if approved %} When you are done, export the approved clips.{% endif %}</p>
+    <div class="actions-row">
+      {% set todo = [] %}{% for c in short if (reviews.get(c.id) or {}).get('status', 'pending') == 'pending' %}{% set _ = todo.append(c) %}{% endfor %}
+      {% if todo %}<a class="button primary" href="/jobs/{{ job.id }}/clips/{{ todo[0].id }}"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>{{ 'Start reviewing' if todo|length == short|length else 'Review the next clip' }}</a>{% endif %}
+      <form method="get" action="/jobs/{{ job.id }}/export"><button type="submit" {% if approved and not todo %}class="primary"{% endif %} {% if not approved %}disabled title="Approve at least one clip first"{% endif %}>Export {{ approved }} approved</button></form>
+    </div>
+    {% else %}
+    <p><strong>No strong moments in this class.</strong> No moment scored at least 2 of 4 for both teaching value and clarity, so nothing is suggested. That is a valid result; you can still open any moment under “Other moments”.</p>
     {% endif %}
   </div>
   {% endif %}
 
-  <p>Transcript: <strong>{{ job.transcript_source or 'not ready' }}</strong>
-    {% for f in job.flags or [] %}<span class="badge warn">{{ f }}</span> {% endfor %}</p>
-  <p class="muted num">Source {{ job.duration|t }} · {{ job.width or '?' }}×{{ job.height or '?' }} · {{ job.source_bytes|bytes }}</p>
+  <p class="facts muted">
+    Transcript: {{ job.transcript_source or 'not ready yet' }}
+    · {{ job.duration|t }} long · {{ job.width or '?' }}×{{ job.height or '?' }} · {{ job.source_bytes|bytes }}
+  </p>
+  {% if job.flags %}<p class="flags">{% for f in job.flags %}<span class="badge warn">{{ f }}</span> {% endfor %}</p>{% endif %}
 </section>
 
 {% if job.stage in ('score', 'prepare', 'review') %}
 <section class="panel" aria-labelledby="short-h">
-  <h2 id="short-h">Shortlist</h2>
+  <h2 id="short-h">Suggested clips</h2>
   {% if short %}
-  <table>
-    <thead><tr><th scope="col" class="num">#</th><th scope="col">Span</th><th scope="col" class="num">Length</th>
-      <th scope="col" class="num" title="value / clarity / opening, each 0–4">V / C / O</th><th scope="col" class="num">Score</th>
-      <th scope="col">Category</th><th scope="col">Review</th><th scope="col"><span class="sr">Open</span></th></tr></thead>
+  <table class="clips">
+    <thead><tr><th scope="col" class="num">#</th><th scope="col">Where in the class</th><th scope="col" class="num">Length</th>
+      <th scope="col" class="num" title="Each scored 0–4">Value · Clarity · Hook</th>
+      <th scope="col">Category</th><th scope="col">Your decision</th><th scope="col"><span class="sr">Open</span></th></tr></thead>
     <tbody>
-    {% for c in short %}{% set r = reviews.get(c.id) %}
-    <tr>
-      <td class="num">{{ c.rank }}</td>
-      <td class="num">{{ c.start|t }} – {{ c.end|t }}</td>
+    {% for c in short %}{% set r = reviews.get(c.id) %}{% set st = r.status if r else 'pending' %}
+    <tr class="r-{{ st }}">
+      <td class="num rank">{{ c.rank }}</td>
+      <td class="mono">{{ c.start|t }} – {{ c.end|t }}</td>
       <td class="num">{{ '%.0f'|format(c.end - c.start) }} s</td>
-      <td class="num">{{ c.value }} / {{ c.clarity }} / {{ c.opening }}</td>
-      <td class="num">{{ '%.2f'|format(c.score) }}</td>
+      <td class="num">{{ '%.1f · %.1f · %.1f'|format(c.value, c.clarity, c.opening) }}</td>
       <td>{{ CATEGORIES.get((r or c).category, (r or c).category) }}</td>
-      <td><span class="badge r-{{ r.status if r else 'pending' }}">{{ r.status if r else 'pending' }}</span></td>
-      <td><a href="/jobs/{{ job.id }}/clips/{{ c.id }}">Open</a></td>
+      <td><span class="badge r-{{ st }}">{{ STATUS_LABELS.get(st, st) }}</span></td>
+      <td><a class="button small" href="/jobs/{{ job.id }}/clips/{{ c.id }}">Open</a></td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
-  {% elif job.status == 'done' %}
-  <p class="empty"><strong>No strong moments in this class.</strong> No candidate reached value 2 and clarity 2, so nothing is suggested. That is a valid result.</p>
-  {% else %}<p class="muted">The shortlist appears after scoring.</p>{% endif %}
+  {% elif job.status != 'done' %}<p class="muted">Suggestions appear here once scoring finishes.</p>{% endif %}
 
   {% if other %}
   <details>
-    <summary>Other candidates ({{ other|length }})</summary>
+    <summary>Other moments ({{ other|length }}) <span class="muted">— lower scores or overlapping; open one if you know it is good</span></summary>
     <table>
-      <thead><tr><th scope="col">Span</th><th scope="col" class="num">V / C / O</th><th scope="col" class="num">Score</th><th scope="col">Category</th><th scope="col"><span class="sr">Open</span></th></tr></thead>
+      <thead><tr><th scope="col">Where in the class</th><th scope="col" class="num">Value · Clarity · Hook</th><th scope="col">Category</th><th scope="col"><span class="sr">Open</span></th></tr></thead>
       <tbody>
       {% for c in other %}
-      <tr><td class="num">{{ c.start|t }} – {{ c.end|t }}</td>
-        <td class="num">{% if c.score is not none %}{{ c.value }} / {{ c.clarity }} / {{ c.opening }}{% else %}not scored{% endif %}</td>
-        <td class="num">{{ '%.2f'|format(c.score) if c.score is not none else '–' }}</td>
+      <tr><td class="mono">{{ c.start|t }} – {{ c.end|t }}</td>
+        <td class="num">{% if c.score is not none %}{{ '%.1f · %.1f · %.1f'|format(c.value, c.clarity, c.opening) }}{% else %}<span class="muted">not scored</span>{% endif %}</td>
         <td>{{ CATEGORIES.get(c.category, c.category or '–') }}</td>
-        <td><a href="/jobs/{{ job.id }}/clips/{{ c.id }}">Open</a></td></tr>
+        <td><a class="button small" href="/jobs/{{ job.id }}/clips/{{ c.id }}">Open</a></td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -109,8 +128,7 @@
 </section>
 {% endif %}
 
-<section class="panel actions">
-  <form method="get" action="/jobs/{{ job.id }}/export"><button type="submit" class="primary" {% if not approved %}disabled title="Approve at least one clip first"{% endif %}>Export {{ approved }} approved</button></form>
-  <form method="post" action="/jobs/{{ job.id }}/delete" data-confirm="Delete this class, its local copy, previews, and exports? This cannot be undone."><button type="submit" class="danger">Delete job</button></form>
+<section class="danger-zone">
+  <form method="post" action="/jobs/{{ job.id }}/delete" data-confirm="Delete this class, its local copy, previews, and exports? This cannot be undone."><button type="submit" class="danger">Delete this class</button></form>
 </section>
 {% endblock %}

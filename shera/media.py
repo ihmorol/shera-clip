@@ -98,7 +98,7 @@ def speech_intervals(path):
     return speech
 
 
-def audio_chunks(path, out_dir, speech, chunk_s=1200):
+def audio_chunks(path, out_dir, speech, chunk_s=600):
     """Mono 16 kHz 32 kbps mp3 chunks cut in the middle of the silence gap nearest each
     multiple of chunk_s. -> [(path, offset_s)]"""
     dur = probe(path)["duration"]
@@ -198,15 +198,12 @@ def _esc(text):
     return text.replace("\\", "\\\u2060").replace("{", "\\{").replace("}", "\\}")
 
 
-def _ass(title, captions, top, bottom, duration):
-    # Title hangs from the top (\an8) and ends just above the content; captions sit on their
-    # baseline (\an2) with room for ~3 wrapped lines between content bottom and the anchor.
-    title_v = max(30, top - 180)
-    cap_v = H - min(H - 80, bottom + 290)
+def _ass(title, captions, title_v, cap_v, duration, w=W, h=H):
+    """Title hangs from the top (\\an8) title_v px down; captions sit on a baseline (\\an2) cap_v px up."""
     style = ("Style: {},{},{},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,"
              "1,{},0,{},40,40,{},1")
     lines = [
-        "[Script Info]", "ScriptType: v4.00+", f"PlayResX: {W}", f"PlayResY: {H}",
+        "[Script Info]", "ScriptType: v4.00+", f"PlayResX: {w}", f"PlayResY: {h}",
         "WrapStyle: 0", "ScaledBorderAndShadow: yes", "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, "
@@ -224,13 +221,24 @@ def _ass(title, captions, top, bottom, duration):
     return "\n".join(lines) + "\n"
 
 
-def render(src, start, end, layout, captions, title, out, preset="veryfast"):
-    """Accurately cut [start, end) from src into a 1080x1920 H.264/AAC mp4 with burned title/captions."""
+def render(src, start, end, layout, captions, title, out, preset="veryfast", landscape=False):
+    """Accurately cut [start, end) from src into an H.264 mp4 with burned captions: 1080x1920 portrait
+    with the title band, or (landscape=True) the whole source frame at 1920x1080 with captions only
+    (a title over the frame would cover slide text). The source audio is copied untouched when it
+    is AAC; any other codec is encoded to AAC so the file plays everywhere."""
     src, out = Path(src).resolve(), Path(out).resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     p = probe(src)
     dur = end - start
-    graph, top, bottom = _geometry(layout, p["width"], p["height"])
+    if landscape:
+        graph = (f"[0:v]fps={FPS},scale={H}:{W}:force_original_aspect_ratio=decrease,"
+                 f"pad={H}:{W}:(ow-iw)/2:(oh-ih)/2:color={BG},setsar=1")
+        ass_text = _ass("", captions, 0, 50, dur, H, W)
+    else:
+        graph, top, bottom = _geometry(layout, p["width"], p["height"])
+        # the title ends just above the content; captions keep room for ~3 wrapped lines below it
+        ass_text = _ass(title, captions, max(30, top - 180), H - min(H - 80, bottom + 290), dur)
+    audio = ["-c:a", "copy"] if p["acodec"] == "aac" else ["-c:a", "aac", "-b:a", "192k"]
     # The .ass sits next to the output and ffmpeg runs there, so the filter sees a bare,
     # escape-free filename (mkstemp names are [a-z0-9_]) instead of a Windows path.
     fd, ass = tempfile.mkstemp(suffix=".ass", prefix="shera_", dir=out.parent)
@@ -238,13 +246,13 @@ def render(src, start, end, layout, captions, title, out, preset="veryfast"):
     ass = Path(ass)
     part = out.with_name(out.name + ".part")
     try:
-        ass.write_text(_ass(title, captions, top, bottom, dur), encoding="utf-8")
+        ass.write_text(ass_text, encoding="utf-8")
         fonts = FONTS_DIR.replace(":", "\\\\:")
         graph += f",ass={ass.name}:fontsdir={fonts},format=yuv420p[v]"
         _run(["ffmpeg", "-y", "-v", "error", "-ss", f"{start:.3f}", "-i", src, "-t", f"{dur:.3f}",
               "-filter_complex", graph, "-map", "[v]", "-map", "0:a:0",
               "-c:v", "libx264", "-preset", preset, "-crf", "20", "-pix_fmt", "yuv420p", "-r", FPS,
-              "-c:a", "aac", "-ar", "48000", "-b:a", "128k", "-ac", "2",
+              *audio,
               "-movflags", "+faststart", "-f", "mp4", part.name], cwd=out.parent)
         os.replace(part, out)
     finally:
@@ -260,7 +268,7 @@ def thumbnail(video, out_jpg, at_s):
     return Path(out_jpg)
 
 
-def verify(path, expected_duration):
+def verify(path, expected_duration, size=(W, H)):
     """-> list of problems; empty means OK."""
     try:
         p = probe(path)
@@ -271,8 +279,8 @@ def verify(path, expected_duration):
         probs.append(f"video codec {p['vcodec']}, expected h264")
     if p["acodec"] != "aac":
         probs.append(f"audio codec {p['acodec']}, expected aac")
-    if (p["width"], p["height"]) != (W, H):
-        probs.append(f"size {p['width']}x{p['height']}, expected {W}x{H}")
+    if (p["width"], p["height"]) != tuple(size):
+        probs.append(f"size {p['width']}x{p['height']}, expected {size[0]}x{size[1]}")
     if abs(p["duration"] - expected_duration) > 0.25:
         probs.append(f"duration {p['duration']:.2f}s, expected {expected_duration:.2f}s")
     if p["has_audio"] and abs(p["v_start"] - p["a_start"]) > 0.2:

@@ -25,6 +25,8 @@
 | D18 | 2026-09-27, [#9](https://github.com/ihmorol/shera-clip/issues/9), owner delegated an interim choice: each clip offers a scaled full frame (default) or an operator-set crop box with an optional repositioned teacher inset. The operator picks per clip from the phone-size preview. The real-recording phone readability check remains open under gate A5. |
 | D19 | 2026-09-27: The paid transcription fallback uses OpenAI `whisper-1` with segment timestamps, the only OpenAI transcription model that returns timestamps (checked 2026-09-27). Posting drafts use a configurable OpenRouter text model. Recheck prices at implementation time; the USD 1.50 cap is enforced from recorded provider cost. |
 | D20 | 2026-09-27, owner: use only OpenRouter with one API key. Speech-to-text goes through OpenRouter `/api/v1/audio/transcriptions` with segment timestamps. The default model is `openai/whisper-large-v3` (stronger on Bangla), with one retry on `openai/whisper-1` if the routed provider rejects timestamps (HTTP 400, unbilled). This replaces the OpenAI-direct part of D19. |
+| D21 | 2026-09-27, owner: every approved clip exports in two versions, portrait 9:16 (1080×1920, title band, captions) and landscape 16:9 (1920×1080, whole source frame, captions only; a title over the frame would cover slide text). The review preview shows both. The source audio is kept as recorded: the AAC stream is copied, not resampled, downmixed, or re-encoded. |
+| D22 | 2026-09-27, owner: a (nearly) silent recording stops before authorization with a clear error, so no paid transcription is spent on silence. The owner asked for a slicker, less confusing interface with a distinctive color; the new theme is recorded in `docs/ui-theme.md`. |
 
 ## Inputs pending, not permission to guess
 

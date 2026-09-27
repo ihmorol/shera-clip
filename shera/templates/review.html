@@ -1,134 +1,156 @@
 {% extends "base.html" %}
-{% block title %}Clip {{ c.id }} · {{ job.title }}{% endblock %}
-{% block crumbs %}<a href="/">Classes</a> / <a href="/jobs/{{ job.id }}">{{ job.title }}</a> / <span>{{ 'Rank ' ~ c.rank if c.rank else 'Candidate' }} · {{ c.start|t }}</span>{% endblock %}
+{% block title %}Clip {{ c.rank or c.id }} · {{ job.title }}{% endblock %}
+{% block crumbs %}<a href="/">Classes</a><span aria-hidden="true">/</span><a href="/jobs/{{ job.id }}">{{ job.title }}</a><span aria-hidden="true">/</span><span>{{ 'Clip ' ~ c.rank if c.rank else 'Moment' }} · {{ c.start|t }}</span>{% endblock %}
 {% block main %}
 <div class="review" id="review" data-base="/jobs/{{ job.id }}/clips/{{ c.id }}"
      data-prev="{{ '/jobs/%s/clips/%s'|format(job.id, prev) if prev else '' }}" data-next="{{ '/jobs/%s/clips/%s'|format(job.id, next) if next else '' }}">
-<div class="col">
+<div class="col work">
   <section class="panel" aria-labelledby="src-h">
-    <h2 id="src-h">Source <span class="muted num" id="span-label"></span></h2>
+    <div class="head-row">
+      <h1 id="src-h">{{ 'Clip ' ~ c.rank if c.rank else 'Moment' }} <span class="muted num mono" id="span-label"></span></h1>
+      <nav class="pager" aria-label="Other clips">
+        {% if prev %}<a class="button small" href="/jobs/{{ job.id }}/clips/{{ prev }}">Previous <kbd>J</kbd></a>{% endif %}
+        {% if next %}<a class="button small" href="/jobs/{{ job.id }}/clips/{{ next }}">Next <kbd>K</kbd></a>{% endif %}
+      </nav>
+    </div>
     <video id="source" src="{{ source_url }}" controls preload="metadata"></video>
-    <p><button type="button" id="play-span">Play clip span</button> <span class="muted">J / K: previous / next candidate</span></p>
-    <ol class="transcript" id="transcript" aria-label="Transcript near this clip">
+    <p class="tools"><button type="button" id="play-span"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Play this clip</button>
+      <span class="muted">Click a line below to hear it. Highlighted lines are inside the clip.</span></p>
+    <ol class="transcript" id="transcript" aria-label="Transcript around this clip">
       {% for u in near %}
       <li><button type="button" class="unit" data-start="{{ u.start }}" data-end="{{ u.end }}">
-        <span class="num muted">{{ u.start|t }}</span> {% if u.speaker %}<span class="muted">{{ u.speaker }}:</span> {% endif %}{{ u.text }}</button></li>
+        <span class="t num mono">{{ u.start|t }}</span><span>{% if u.speaker %}<span class="muted">{{ u.speaker }}:</span> {% endif %}{{ u.text }}</span></button></li>
       {% endfor %}
     </ol>
-  </section>
-  <section class="panel" aria-labelledby="score-h">
-    <h2 id="score-h">Scores</h2>
     {% if c.score is not none %}
-    <p class="num">Value {{ c.value }}/4 · Clarity {{ c.clarity }}/4 · Opening {{ c.opening }}/4 · Score {{ '%.2f'|format(c.score) }}</p>
-    {% else %}<p class="muted">Not scored.</p>{% endif %}
-    <details><summary>Supporting source text</summary><p class="excerpt">{{ c.text }}</p></details>
-    <div class="grid-form">
-      <label for="category">Category</label>
-      <select id="category" data-field>
-        {% if not rv.category %}<option value="" selected>— choose —</option>{% endif %}
-        {% for k, label in CATEGORIES.items() %}<option value="{{ k }}" {% if rv.category == k %}selected{% endif %}>{{ label }}</option>{% endfor %}
-      </select>
-      <label for="tags">Tags <span class="muted">(comma-separated)</span></label>
-      <input id="tags" data-field value="{{ (rv.tags or [])|join(', ') }}" placeholder="Writing, Task 2, Band 6–7">
-    </div>
+    <p class="scores num">Scores (0–4): value <strong>{{ c.value }}</strong> · clarity <strong>{{ c.clarity }}</strong> · hook <strong>{{ c.opening }}</strong></p>
+    {% endif %}
   </section>
-</div>
 
-<div class="col">
-  <section class="panel" aria-labelledby="bounds-h">
-    <h2 id="bounds-h">Boundaries</h2>
+  <details class="panel trim" open>
+    <summary><span class="step num">1</span>Trim the start and end <span class="muted" id="duration-sum"></span></summary>
     <div class="bounds">
       {% for side in ('start', 'end') %}
       <fieldset>
-        <legend>{{ side|capitalize }} <span class="muted">(source seconds)</span></legend>
+        <legend>{{ side|capitalize }} <span class="muted">(seconds into the class)</span></legend>
         <input type="number" id="{{ side }}" step="0.1" min="0" max="{{ job.duration }}" value="{{ rv[side] }}" data-field aria-label="{{ side|capitalize }} seconds">
         <div class="nudge">
-          <button type="button" data-nudge="{{ side }}" data-unit="-1" aria-label="{{ side }} one transcript unit earlier">−unit</button>
-          <button type="button" data-nudge="{{ side }}" data-by="-0.5">−0.5 s</button>
-          <button type="button" data-nudge="{{ side }}" data-by="0.5">+0.5 s</button>
-          <button type="button" data-nudge="{{ side }}" data-unit="1" aria-label="{{ side }} one transcript unit later">+unit</button>
+          <button type="button" data-nudge="{{ side }}" data-unit="-1" title="Snap to the previous transcript line">− line</button>
+          <button type="button" data-nudge="{{ side }}" data-by="-0.5">− 0.5 s</button>
+          <button type="button" data-nudge="{{ side }}" data-by="0.5">+ 0.5 s</button>
+          <button type="button" data-nudge="{{ side }}" data-unit="1" title="Snap to the next transcript line">+ line</button>
         </div>
       </fieldset>
       {% endfor %}
     </div>
-    <p>Duration <strong class="num" id="duration"></strong> <span id="dur-warn" class="badge warn" hidden></span></p>
-  </section>
+    <p>Length <strong class="num" id="duration"></strong> <span id="dur-warn" class="badge warn" hidden></span></p>
+  </details>
 
-  <section class="panel" aria-labelledby="layout-h">
-    <h2 id="layout-h">Layout</h2>
+  <details class="panel trim" open>
+    <summary><span class="step num">2</span>Title and captions</summary>
+    <div class="grid-form">
+      <label for="title">Title on the portrait video</label>
+      <input id="title" data-field value="{{ rv.title or '' }}" placeholder="Optional, shown above the slide">
+    </div>
+    <table class="captions">
+      <thead><tr><th scope="col">From (s)</th><th scope="col">To (s)</th><th scope="col">Caption, as spoken</th><th scope="col"><span class="sr">Delete</span></th></tr></thead>
+      <tbody id="cap-rows"></tbody>
+    </table>
+    <template id="cap-row"><tr>
+      <td><input type="number" step="0.1" min="0" class="c-start" aria-label="Caption start (seconds from clip start)" data-field></td>
+      <td><input type="number" step="0.1" min="0" class="c-end" aria-label="Caption end (seconds from clip start)" data-field></td>
+      <td><input class="c-text" aria-label="Caption text" data-field></td>
+      <td><button type="button" class="c-del icon" aria-label="Delete this caption"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></td></tr></template>
+    <p class="tools"><button type="button" id="cap-add">Add a caption</button>
+      <button type="button" id="cap-reset" title="Replace all captions with the transcript text for the saved start and end">Rebuild from transcript</button>
+      <span class="muted">Times count from the start of the clip.</span></p>
+  </details>
+
+  <details class="panel trim" {% if (rv.layout or {}).get('mode') == 'crop' %}open{% endif %}>
     {% set lay = rv.layout or {'mode': 'full'} %}
-    <fieldset class="radios"><legend class="sr">Layout mode</legend>
-      <label><input type="radio" name="mode" value="full" data-field {% if lay.mode != 'crop' %}checked{% endif %}> Full frame</label>
-      <label><input type="radio" name="mode" value="crop" data-field {% if lay.mode == 'crop' %}checked{% endif %}> Crop</label>
+    <summary><span class="step num">3</span>Portrait framing <span class="muted">— {{ 'custom crop' if lay.mode == 'crop' else 'whole frame' }}</span></summary>
+    <p class="muted">Whole frame fits the full recording into the phone screen. If slide text is too small in the portrait preview, crop to the slide instead. The landscape version always shows the whole frame.</p>
+    <fieldset class="radios"><legend class="sr">Framing</legend>
+      <label><input type="radio" name="mode" value="full" data-field {% if lay.mode != 'crop' %}checked{% endif %}> Whole frame</label>
+      <label><input type="radio" name="mode" value="crop" data-field {% if lay.mode == 'crop' %}checked{% endif %}> Crop to the slide</label>
     </fieldset>
     <div id="crop-fields" {% if lay.mode != 'crop' %}hidden{% endif %}>
+      <p class="muted">Values are fractions of the recording: x and y are the top-left corner, w and h the size (0 to 1).</p>
       {% for box, vals in (('crop', lay.crop or [0, 0, 1, 1]), ('inset', lay.inset or [0.75, 0, 0.25, 0.25])) %}
-      <fieldset class="box"><legend>{% if box == 'inset' %}<label><input type="checkbox" id="use-inset" data-field {% if lay.inset %}checked{% endif %}> Teacher inset</label>{% else %}Content crop{% endif %} <span class="muted">(0–1 of source)</span></legend>
+      <fieldset class="box"><legend>{% if box == 'inset' %}<label><input type="checkbox" id="use-inset" data-field {% if lay.inset %}checked{% endif %}> Also show the teacher’s camera</label>{% else %}Slide area{% endif %}</legend>
         {% for n in ('x', 'y', 'w', 'h') %}
         <label>{{ n }} <input type="number" step="0.01" min="0" max="1" id="{{ box }}-{{ n }}" value="{{ vals[loop.index0] }}" data-field></label>
         {% endfor %}
       </fieldset>
       {% endfor %}
     </div>
-  </section>
+  </details>
 
-  <section class="panel" aria-labelledby="cap-h">
-    <h2 id="cap-h">Title and captions</h2>
-    <div class="grid-form">
-      <label for="title">On-video title</label>
-      <input id="title" data-field value="{{ rv.title or '' }}">
-    </div>
-    <table class="captions">
-      <thead><tr><th scope="col">Start</th><th scope="col">End</th><th scope="col">Text (as spoken)</th><th scope="col"><span class="sr">Delete</span></th></tr></thead>
-      <tbody id="cap-rows"></tbody>
-    </table>
-    <template id="cap-row"><tr>
-      <td><input type="number" step="0.1" min="0" class="c-start" aria-label="Caption start (s from clip start)" data-field></td>
-      <td><input type="number" step="0.1" min="0" class="c-end" aria-label="Caption end (s from clip start)" data-field></td>
-      <td><input class="c-text" aria-label="Caption text" data-field></td>
-      <td><button type="button" class="c-del" aria-label="Delete caption row">×</button></td></tr></template>
-    <p><button type="button" id="cap-add">Add row</button>
-      <button type="button" id="cap-reset" title="Replace captions with the transcript text for the saved boundaries">Rebuild from transcript</button>
-      <span class="muted">Times are seconds from the clip start.</span></p>
-  </section>
-
-  <section class="panel" aria-labelledby="post-h">
-    <h2 id="post-h">Posting text</h2>
+  <details class="panel trim">
     {% set d = rv.drafts or {} %}
-    {% if d.error %}<p class="alert fail">Draft provider error: {{ d.error }}</p>{% endif %}
+    <summary><span class="step num">4</span>Category, tags and posting text</summary>
+    <div class="grid-form">
+      <label for="category">Category</label>
+      <select id="category" data-field>
+        {% if not rv.category %}<option value="" selected>Choose…</option>{% endif %}
+        {% for k, label in CATEGORIES.items() %}<option value="{{ k }}" {% if rv.category == k %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <label for="tags">Tags <span class="muted">(comma-separated)</span></label>
+      <input id="tags" data-field value="{{ (rv.tags or [])|join(', ') }}" placeholder="Writing, Task 2, Band 6–7">
+    </div>
+    {% if d.error %}<p class="alert fail">The AI draft failed: {{ d.error }}</p>{% endif %}
     {% if not d or d.error %}
-      <p>{% if not d %}<span class="muted">No draft yet.</span>{% endif %}
-        <button type="button" id="draft-run" {% if drafting %}disabled title="The job is drafting posting text now"{% endif %}>Draft posting text (paid)</button>
+      <p class="tools">{% if not d %}<span class="muted">No posting text yet.</span>{% endif %}
+        <button type="button" id="draft-run" {% if drafting %}disabled title="Posting text is being drafted for this class now"{% endif %}>Write a draft with AI (paid, about $0.002)</button>
         <span id="draft-status" class="muted" role="status"></span></p>
     {% endif %}
+    <div class="posts">
     {% for p in ('facebook', 'youtube') %}
     <fieldset class="post"><legend>{{ 'Facebook' if p == 'facebook' else 'YouTube' }}</legend>
-      <div class="grid-form">
       {% for k in ('title', 'description', 'cta') %}
-        <label for="{{ p }}-{{ k }}">{{ 'CTA' if k == 'cta' else k|capitalize }}</label>
+        <label for="{{ p }}-{{ k }}">{{ 'Call to action' if k == 'cta' else k|capitalize }}</label>
         {% if k == 'description' %}<textarea id="{{ p }}-{{ k }}" rows="4" data-field>{{ (d.get(p) or {}).get(k, '') }}</textarea>
         {% else %}<input id="{{ p }}-{{ k }}" data-field value="{{ (d.get(p) or {}).get(k, '') }}">{% endif %}
       {% endfor %}
-      </div>
     </fieldset>
     {% endfor %}
-  </section>
+    </div>
+  </details>
+</div>
 
-  <section class="panel" aria-labelledby="dec-h">
-    <h2 id="dec-h">Preview and decision</h2>
-    <p><button type="button" id="save" class="primary">Save</button> <span id="save-status" role="status" class="muted"></span></p>
-    <div class="phone"><video id="preview" controls preload="metadata" {% if state.preview_url %}src="{{ state.preview_url }}"{% endif %}></video>
-      <p id="no-preview" class="muted" {% if state.preview_url %}hidden{% endif %}>No preview of the current saved edits.</p></div>
-    <p><button type="button" id="render">Render phone preview</button> <span id="render-status" role="status" class="muted"></span></p>
-    <p class="decide">
-      <span class="badge r-{{ rv.status }}" id="status-badge">{{ rv.status }}</span>
-      <button type="button" id="approve" class="ok" disabled>Approve</button>
-      <button type="button" id="reject">Reject</button>
-    </p>
-    <p id="approve-hint" class="muted" role="status"></p>
+<aside class="col bench" aria-labelledby="dec-h">
+  <section class="panel">
+    <div class="head-row">
+      <h2 id="dec-h">Preview and decide</h2>
+      <span class="badge r-{{ rv.status }}" id="status-badge">{{ STATUS_LABELS.get(rv.status, rv.status) }}</span>
+    </div>
+    <p id="approve-hint" class="hint" role="status"></p>
+    <div class="previews">
+      <figure class="frame portrait">
+        <div class="gate"><video id="preview" controls preload="metadata" {% if state.preview_url %}src="{{ state.preview_url }}"{% endif %}></video>
+        <p id="no-preview" class="empty-frame" {% if state.preview_url %}hidden{% endif %}>Portrait preview appears here</p></div>
+        <figcaption>Portrait 9:16 <span class="muted">· Shorts, Reels</span></figcaption>
+      </figure>
+      <div class="side">
+        <figure class="frame landscape">
+          <div class="gate"><video id="preview-land" controls preload="metadata" {% if state.landscape_url %}src="{{ state.landscape_url }}"{% endif %}></video>
+          <p id="no-preview-land" class="empty-frame" {% if state.landscape_url %}hidden{% endif %}>Landscape preview</p></div>
+          <figcaption>Landscape 16:9 <span class="muted">· YouTube, Facebook feed</span></figcaption>
+        </figure>
+        <div class="bench-actions">
+          <button type="button" id="render" class="primary">Save and render previews</button>
+          <button type="button" id="save">Save only</button>
+          <p class="status-lines"><span id="save-status" role="status" class="muted"></span> <span id="render-status" role="status" class="muted"></span></p>
+          <div class="decide">
+            <button type="button" id="approve" class="ok" disabled><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Approve</button>
+            <button type="button" id="reject"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg>Reject</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </section>
+</aside>
 </div>
-</div>
-<script type="application/json" id="data">{{ {"rv": {"start": rv.start, "end": rv.end, "captions": rv.captions or []}, "state": state, "bounds": bounds}|tojson }}</script>
+<script type="application/json" id="data">{{ {"rv": {"start": rv.start, "end": rv.end, "captions": rv.captions or []}, "state": state, "bounds": bounds, "labels": STATUS_LABELS}|tojson }}</script>
 {% endblock %}
 {% block scripts %}<script src="/static/review.js" defer></script>{% endblock %}

@@ -5,13 +5,17 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _load_env(path):
+    """A filled .env entry is authoritative over a stale variable inherited from the shell,
+    so editing .env always takes effect after a restart (setdefault let an old export win)."""
     if not path.is_file():
         return
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
         line = line.strip()
         if line and not line.startswith("#") and "=" in line:
             k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip().strip("\"'"))
+            v = v.strip().strip("\"'")
+            if v:  # a blank .env line never clobbers a real environment value
+                os.environ[k.strip()] = v
 
 
 _load_env(ROOT / ".env")
