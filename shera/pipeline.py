@@ -133,7 +133,7 @@ def estimate(job_id):
     job = db.get_job(job_id)
     has_t = (job_dir(job_id) / "transcript.json").exists()
     windows = len(cand.build_windows(_units(job_id))) if has_t else int(job["duration"] // 20) + 1
-    return {"transcription": 0.0 if has_t else job["duration"] / 60 * config.WHISPER_USD_PER_MIN,
+    return {"transcription": 0.0 if has_t else job["duration"] / 60 * config.STT_USD_PER_MIN,
             "ranking": config.JEV_EST_USD * windows, "drafts": config.DRAFT_EST_USD * 10, "windows": windows}
 
 
@@ -156,13 +156,14 @@ def _transcribe(job_id):
     results = []
     for i, (path, offset) in enumerate(chunks):
         end = chunks[i + 1][1] if i + 1 < len(chunks) else job["duration"]
-        est = (end - offset) / 60 * config.WHISPER_USD_PER_MIN
-        results.append((offset, ledger.call(job_id, f"whisper:{i}", "whisper", est,
-                                            lambda p=path: providers.whisper(p))))
+        est = (end - offset) / 60 * config.STT_USD_PER_MIN
+        results.append((offset, ledger.call(job_id, f"stt:{i}", "stt", est,
+                                            lambda p=path: providers.transcribe(p))))
         db.update_job(job_id, progress=(i + 1) / len(chunks))
     units, flags = transcript.units_from_whisper(results)
-    _write(d / "transcript.json", {"source": "whisper-1", "units": units, "flags": flags})
-    db.update_job(job_id, transcript_source="whisper-1", flags=job["flags"] + flags)
+    source = results[0][1].get("model", config.STT_MODEL) if results else config.STT_MODEL
+    _write(d / "transcript.json", {"source": source, "units": units, "flags": flags})
+    db.update_job(job_id, transcript_source=source, flags=job["flags"] + flags)
 
 
 def _candidates(job_id):

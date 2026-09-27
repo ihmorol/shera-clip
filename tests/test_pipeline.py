@@ -28,7 +28,7 @@ def env(tmp_path, monkeypatch):
     src.write_bytes(b"not really a video")
     vtt = tmp_path / "class.vtt"
     vtt.write_text(vtt_text(), encoding="utf-8")
-    calls = {"jev": [], "draft": [], "whisper": [], "render": []}
+    calls = {"jev": [], "draft": [], "stt": [], "render": []}
 
     def copy(s, d, on_progress=None):
         shutil.copyfile(s, d)
@@ -145,14 +145,14 @@ def test_missing_vtt_uses_authorized_whisper_with_absolute_times(env, monkeypatc
              "duration": 150.0}
     monkeypatch.setattr(media, "audio_chunks", lambda p, out, speech: [(tmp_path / "a0.mp3", 0.0),
                                                                         (tmp_path / "a1.mp3", 150.0)])
-    monkeypatch.setattr(providers, "whisper", lambda p: (calls["whisper"].append(p) or chunk, 0.015))
+    monkeypatch.setattr(providers, "transcribe", lambda p: (calls["stt"].append(p) or dict(chunk, model="openai/whisper-large-v3"), 0.015))
     jid = pipeline.start_job(src, None)
     job = db.get_job(jid)
-    assert job["status"] == "waiting" and job["estimate_usd"] >= DUR / 60 * config.WHISPER_USD_PER_MIN
+    assert job["status"] == "waiting" and job["estimate_usd"] >= DUR / 60 * config.STT_USD_PER_MIN
     pipeline.authorize(jid)
     job = db.get_job(jid)
-    assert job["status"] == "done" and job["transcript_source"] == "whisper-1"
-    assert len(calls["whisper"]) == 2
+    assert job["status"] == "done" and job["transcript_source"] == "openai/whisper-large-v3"
+    assert len(calls["stt"]) == 2
     assert max(c["end"] for c in db.candidates(jid)) > 150  # second chunk offsets were applied
 
 

@@ -143,7 +143,7 @@ def _home(request, error=None, form=None, status_code=200):
              "disk": _dir_bytes(pipeline.job_dir(j["id"])) + _dir_bytes(config.DATA / "exports" / j["id"])}
             for j in db.list_jobs()]
     setup = {"FFmpeg": bool(shutil.which("ffmpeg") and shutil.which("ffprobe")),
-             "OpenRouter key": bool(config.openrouter_key()), "OpenAI key": bool(config.openai_key())}
+             "OpenRouter key": bool(config.openrouter_key())}
     return page(request, "home.html", status_code, setup=setup, inbox=inbox, inbox_dir=config.INBOX, jobs=jobs,
                 error=error, form=form or {})
 
@@ -195,7 +195,7 @@ def _job_page(request, job_id, error=None, status_code=200):
     calls = ledger.calls(job_id)
     est = pipeline.estimate(job_id) if job["stage"] == "authorize" and job["status"] == "waiting" else None
     return page(request, "job.html", status_code, job=job, short=short, other=other, reviews=reviews,
-                spent=ledger.spent(job_id), est=est, error=error,
+                spent=ledger.spent(job_id), est=est, error=error, stt_model=config.STT_MODEL,
                 stuck=[c for c in calls if c["state"] == "indeterminate" or (c["state"] == "sent" and not _live(c))],
                 inflight=[c for c in calls if c["state"] == "sent" and _live(c)],
                 approved=sum(r["status"] == "approved" for r in reviews.values()))

@@ -26,7 +26,7 @@ The operator works on a laptop. Classes are Zoom cloud recordings of slides, Wor
 
 - Priority: publishable clips, minimal manual work, low cost, then processing speed.
 - The app binds to loopback and keeps working files locally. It has no user accounts, remote database, cloud deployment, or automatic publishing.
-- External services are Zoom for source import, OpenRouter Jev for ranking, a separate OpenRouter text model for editable posting drafts, and a transcription service when Zoom text is unusable.
+- External services are Zoom for source import, OpenRouter Jev for ranking, a separate OpenRouter text model for editable posting drafts, and OpenRouter speech-to-text when Zoom text is unusable. One OpenRouter key covers all paid calls (D20).
 - External paid calls require one per-class authorization and share a hard USD 1.50 cap.
 - Clip quality, mixed Bangla/English captions, slide readability, and explicit operator approval are product requirements.
 - The owner has stated permission to use the recordings. Each exported clip still receives quality and visible-content review.

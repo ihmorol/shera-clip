@@ -13,7 +13,7 @@ def main() -> int:
     tracked = [Path(line) for line in check_output(["git", "ls-files"], cwd=ROOT, text=True).splitlines()]
     failures = []
     for path in tracked:
-        if path.suffix.lower() in PRIVATE_SUFFIXES or path.name == ".env" or path.name.startswith(".env."):
+        if path.suffix.lower() in PRIVATE_SUFFIXES or (path.name == ".env" or path.name.startswith(".env.")) and path.name != ".env.example":
             failures.append(f"private artifact tracked: {path}")
         if path.suffix.lower() != ".md":
             continue

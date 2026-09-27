@@ -50,10 +50,12 @@ def test_cross_origin_post_is_rejected(client):
 
 def test_home_shows_key_status_without_leaking_value(client, monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-SECRET-123456")
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     html = client.get("/").text
     assert "sk-or-SECRET-123456" not in html
-    assert "OpenRouter key" in html and "missing" in html and "add to .env" in html
+    assert "OpenRouter key" in html and "OpenAI" not in html
+    monkeypatch.delenv("OPENROUTER_API_KEY")
+    html = client.get("/").text
+    assert "missing" in html and "add to .env" in html
 
 
 def test_import_validation_errors(client, tmp_path):

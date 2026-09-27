@@ -28,7 +28,7 @@
     <p>One authorization covers every paid call for this class. The ledger stops before the hard cap.</p>
     <table class="compact">
       <tbody>
-      <tr><th scope="row">Transcription (whisper-1)</th><td class="num">{{ est.transcription|usd }}</td></tr>
+      <tr><th scope="row">Transcription ({{ stt_model }})</th><td class="num">{{ est.transcription|usd }}</td></tr>
       <tr><th scope="row">Ranking (Jev, {{ est.windows }} windows)</th><td class="num">{{ est.ranking|usd }}</td></tr>
       <tr><th scope="row">Posting drafts (up to 10)</th><td class="num">{{ est.drafts|usd }}</td></tr>
       <tr><th scope="row">Estimate</th><td class="num"><strong>{{ job.estimate_usd|usd }}</strong></td></tr>
