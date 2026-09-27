@@ -37,6 +37,7 @@ $("cap-add").addEventListener("click", () => {
 function refreshSpan() {
   const s = val("start"), e = val("end"), d = e - s;
   $("duration").textContent = isFinite(d) ? `${d.toFixed(1)} s` : "–";
+  $("duration-sum").textContent = isFinite(d) ? `— ${d.toFixed(1)} s` : "";
   $("span-label").textContent = isFinite(d) ? `${fmt(s)} – ${fmt(e)}` : "";
   const warn = $("dur-warn");
   warn.hidden = !(d < 15 || d > 60);
@@ -107,7 +108,7 @@ root.addEventListener("change", (e) => { if (e.target.matches("[data-field]")) {
 
 async function withBusy(btn, fn) {
   btn.disabled = true; btn.classList.add("loading"); btn.setAttribute("aria-busy", "true");
-  try { return await fn(); } finally {
+  try { return await fn(); } catch (e) { $("save-status").textContent = e.message; } finally {
     btn.disabled = false; btn.classList.remove("loading"); btn.removeAttribute("aria-busy"); render();
   }
 }
@@ -160,10 +161,7 @@ if ($("draft-run")) {
 
 // ---- decision ----
 async function decide(decision) {
-  try {
-    state = await api("/decision", { decision });
-    render();
-  } catch (e) { render(); $("approve-hint").textContent = e.message; }
+  state = await api("/decision", { decision }); // an error lands in save-status via withBusy
 }
 $("approve").addEventListener("click", () => withBusy($("approve"), () => decide("approve")));
 $("reject").addEventListener("click", () => withBusy($("reject"), () => decide("reject")));
@@ -171,25 +169,32 @@ $("reject").addEventListener("click", () => withBusy($("reject"), () => decide("
 function render() {
   const rendering = state.render === "running";
   $("render").disabled = rendering;
-  $("render-status").textContent = rendering ? "Rendering…" : state.render === "error" ? `Render failed: ${state.render_error}` : "";
+  $("render-status").textContent = state.render === "error" ? `Render failed: ${state.render_error}` : "";
+  $("render").textContent = rendering ? "Rendering…" : dirty ? "Save and render previews" : state.preview_ok ? "Render again" : "Render previews";
+  $("render").classList.toggle("loading", rendering);
   if ($("draft-status")) {
     $("draft-status").textContent = state.draft === "running" ? "Drafting…" : state.draft === "error" ? `Draft failed: ${state.draft_error}` : "";
   }
-  const pv = $("preview");
-  if (state.preview_url && !dirty) {
-    if (!pv.src.endsWith(state.preview_url)) pv.src = state.preview_url;
-    $("no-preview").hidden = true;
-  } else { pv.removeAttribute("src"); $("no-preview").hidden = false; }
+  for (const [video, empty, url] of [["preview", "no-preview", state.preview_url], ["preview-land", "no-preview-land", state.landscape_url]]) {
+    const v = $(video);
+    if (url && !dirty) {
+      if (!v.src.endsWith(url)) v.src = url;
+      $(empty).hidden = true;
+    } else if (v.hasAttribute("src")) { v.removeAttribute("src"); v.load(); $(empty).hidden = false; }
+    else $(empty).hidden = false;
+  }
   const canApprove = state.preview_ok && !dirty && !rendering;
   $("approve").disabled = !canApprove || state.status === "approved";
   $("reject").disabled = state.status === "rejected";
   const badge = $("status-badge");
-  badge.textContent = state.status;
+  badge.textContent = data.labels[state.status] || state.status;
   badge.className = `badge r-${state.status}`;
-  $("approve-hint").textContent = dirty ? "Save, then render a preview to approve."
-    : state.status === "approved" ? "Approved. Changing the video, title, or captions needs a new preview and approval."
-    : !state.preview_ok ? "Render a phone preview of the current saved edits to approve."
-    : "The preview matches the saved edits.";
+  $("approve-hint").textContent = rendering ? "Rendering both versions… this takes a few seconds."
+    : dirty ? "You have unsaved changes. Save and render the previews, then watch both before approving."
+    : state.status === "approved" ? "Approved. It will be in the export. Changing the clip, title, or captions needs a new preview and approval."
+    : state.status === "rejected" ? "Rejected. It will not be exported. Render previews to reconsider."
+    : !state.preview_ok ? "Render the previews, watch both versions, then approve or reject."
+    : "Both previews match your saved edits. Watch them, then approve or reject.";
 }
 render();
 if (state.render === "running" || state.draft === "running") setTimeout(poll, 1000);

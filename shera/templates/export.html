@@ -1,45 +1,57 @@
 {% extends "base.html" %}
 {% set refresh = task.state == 'running' %}
 {% block title %}Export · {{ job.title }}{% endblock %}
-{% block crumbs %}<a href="/">Classes</a> / <a href="/jobs/{{ job.id }}">{{ job.title }}</a> / <span>Export</span>{% endblock %}
+{% block crumbs %}<a href="/">Classes</a><span aria-hidden="true">/</span><a href="/jobs/{{ job.id }}">{{ job.title }}</a><span aria-hidden="true">/</span><span>Export</span>{% endblock %}
 {% block main %}
 <section class="panel" aria-labelledby="exp-h">
-  <h1 id="exp-h">Export</h1>
+  <h1 id="exp-h">Export approved clips</h1>
   {% if error %}<p class="alert fail" role="alert">{{ error }}</p>{% endif %}
-  {% if task.state == 'running' %}<p class="alert run" role="status">Rendering final videos… this page refreshes every 2 s.</p>
-  {% elif task.state == 'error' %}<p class="alert fail" role="alert">Export failed: {{ task.error }}. Approved reviews and paid results are kept; fix the cause and export again.</p>{% endif %}
-  <p>{{ approved }} approved clip{{ '' if approved == 1 else 's' }}. Only approved clips are exported; each export re-renders them from the current saved edits.</p>
-  <form method="post" action="/jobs/{{ job.id }}/export" class="inline"><button type="submit" class="primary" {% if not approved or task.state == 'running' %}disabled{% endif %}>{{ 'Export again' if packages else 'Export' }}</button></form>
-  {% if packages %}
-  <p>Folder: <span class="mono">{{ root }}</span>
-    {% if can_open %}<form method="post" action="/jobs/{{ job.id }}/export/open" class="inline"><button type="submit">Open folder</button></form>{% endif %}</p>
+  {% if task.state == 'running' %}
+  <div class="next" role="status"><p><strong>Working:</strong> rendering the final portrait and landscape videos. This page refreshes itself.</p></div>
+  {% elif task.state == 'error' %}
+  <p class="alert fail" role="alert">Export failed: {{ task.error }}. Your approvals and paid results are kept; fix the cause and export again.</p>
+  {% else %}
+  <div class="next">
+    <p>{% if approved %}<strong>{{ approved }} approved clip{{ '' if approved == 1 else 's' }}</strong> will be rendered in full quality, each as a portrait and a landscape video with captions, a thumbnail and posting text.{% else %}No clips are approved yet. Approve clips on the class page first.{% endif %}</p>
+    <div class="actions-row">
+      <form method="post" action="/jobs/{{ job.id }}/export"><button type="submit" class="primary" {% if not approved %}disabled{% endif %}>{{ 'Export again' if packages else 'Export' }}</button></form>
+      {% if packages and can_open %}<form method="post" action="/jobs/{{ job.id }}/export/open"><button type="submit"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg>Open the export folder</button></form>{% endif %}
+    </div>
+  </div>
   {% endif %}
+  {% if packages %}<p class="muted">Folder: <span class="mono">{{ root }}</span></p>{% endif %}
 </section>
 
 {% if skipped %}
-<section class="panel" aria-labelledby="skip-h">
-  <h2 id="skip-h">Not exported <span class="badge warn">{{ skipped|length }}</span></h2>
-  <ul>{% for s in skipped %}<li><a href="/jobs/{{ job.id }}/clips/{{ s.candidate_id }}">Clip {{ s.candidate_id }}</a> (rank {{ s.rank or '–' }}): {{ s.reason }}</li>{% endfor %}</ul>
+<section class="panel alert attn" aria-labelledby="skip-h">
+  <h2 id="skip-h">Not exported ({{ skipped|length }})</h2>
+  <ul class="plain">{% for s in skipped %}<li><a href="/jobs/{{ job.id }}/clips/{{ s.candidate_id }}">Clip {{ s.rank or s.candidate_id }}</a>: approved, but edited after its preview. Render the previews again and re-approve.</li>{% endfor %}</ul>
 </section>
 {% endif %}
+
 {% for p in packages %}
 <section class="panel package" aria-labelledby="pkg-{{ p.candidate_id }}">
-  <h2 id="pkg-{{ p.candidate_id }}">Rank {{ p.rank or '–' }} · clip {{ p.candidate_id }}
-    {% if p.problems %}<span class="badge fail">{{ p.problems|length }} problem{{ '' if p.problems|length == 1 else 's' }}</span>{% else %}<span class="badge ok">verified</span>{% endif %}</h2>
+  <div class="head-row">
+    <h2 id="pkg-{{ p.candidate_id }}">Clip {{ p.rank or p.candidate_id }}</h2>
+    {% if p.problems %}<span class="badge fail">{{ p.problems|length }} problem{{ '' if p.problems|length == 1 else 's' }}</span>{% else %}<span class="badge ok">Checked</span>{% endif %}
+  </div>
   <div class="pkg-grid">
-    {% if p.video_url %}<div class="phone small"><video src="{{ p.video_url }}" controls preload="none"></video></div>{% endif %}
+    <div class="previews small">
+      {% if p.video_url %}<figure class="frame portrait"><div class="gate"><video src="{{ p.video_url }}" controls preload="metadata"></video></div><figcaption>Portrait</figcaption></figure>{% endif %}
+      {% if p.landscape_url %}<figure class="frame landscape"><div class="gate"><video src="{{ p.landscape_url }}" controls preload="metadata"></video></div><figcaption>Landscape</figcaption></figure>{% endif %}
+    </div>
     <div>
-      <p class="mono">{{ p.path }}</p>
+      <p class="mono muted">{{ p.path }}</p>
       <p class="muted">{{ p.files|join(' · ') }}</p>
       {% if p.problems %}<ul class="problems">{% for x in p.problems %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
       <form method="post" action="/jobs/{{ job.id }}/clips/{{ p.candidate_id }}/posted" class="grid-form">
-        <label for="fb-{{ p.candidate_id }}">Facebook post URL</label>
-        <input id="fb-{{ p.candidate_id }}" name="facebook_url" type="url" value="{{ p.posted.facebook_url or '' }}">
-        <label for="yt-{{ p.candidate_id }}">YouTube video URL</label>
-        <input id="yt-{{ p.candidate_id }}" name="youtube_url" type="url" value="{{ p.posted.youtube_url or '' }}">
-        <label for="notes-{{ p.candidate_id }}">Notes <span class="muted">(optional, e.g. reach)</span></label>
-        <textarea id="notes-{{ p.candidate_id }}" name="notes" rows="2">{{ p.posted.notes or '' }}</textarea>
-        <div></div><button type="submit">Save post record</button>
+        <label for="fb-{{ p.candidate_id }}">Facebook post link</label>
+        <input id="fb-{{ p.candidate_id }}" name="facebook_url" type="url" value="{{ p.posted.facebook_url or '' }}" placeholder="After posting, paste the link">
+        <label for="yt-{{ p.candidate_id }}">YouTube video link</label>
+        <input id="yt-{{ p.candidate_id }}" name="youtube_url" type="url" value="{{ p.posted.youtube_url or '' }}" placeholder="After posting, paste the link">
+        <label for="notes-{{ p.candidate_id }}">Notes <span class="muted">(optional)</span></label>
+        <textarea id="notes-{{ p.candidate_id }}" name="notes" rows="2" placeholder="e.g. reach after a week">{{ p.posted.notes or '' }}</textarea>
+        <div></div><div><button type="submit">Save posting record</button></div>
       </form>
     </div>
   </div>

@@ -52,10 +52,10 @@ def test_home_shows_key_status_without_leaking_value(client, monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-SECRET-123456")
     html = client.get("/").text
     assert "sk-or-SECRET-123456" not in html
-    assert "OpenRouter key" in html and "OpenAI" not in html
+    assert "Finish setup" not in html and "OpenAI" not in html
     monkeypatch.delenv("OPENROUTER_API_KEY")
     html = client.get("/").text
-    assert "missing" in html and "add to .env" in html
+    assert "<strong>OpenRouter key</strong> is missing" in html and "OPENROUTER_API_KEY</span> to <span class=\"mono\">.env" in html
 
 
 def test_import_validation_errors(client, tmp_path):
@@ -70,6 +70,32 @@ def test_import_validation_errors(client, tmp_path):
     assert r.status_code == 400 and "must be a .vtt file" in r.text
 
 
+def test_browse_lists_folders_and_mp4_only(client, tmp_path):
+    root = tmp_path / "classes"
+    (root / "sub").mkdir(parents=True)
+    (root / "a.mp4").write_bytes(b"x")
+    (root / "notes.txt").write_bytes(b"x")
+    data = client.get("/browse", params={"path": str(root)}).json()
+    assert data["path"] == str(root) and data["parent"] == str(tmp_path)
+    assert [f["name"] for f in data["files"]] == ["a.mp4"]  # non-MP4 files are not offered
+    assert [d["name"] for d in data["dirs"]] == ["sub"]
+
+
+def test_browse_defaults_to_starting_places(client):
+    config.INBOX.mkdir(parents=True, exist_ok=True)
+    data = client.get("/browse").json()
+    assert data["path"] == "" and data["parent"] is None and data["files"] == []
+    assert any(d["name"] == "Inbox" for d in data["dirs"])
+
+
+def test_browse_missing_path_404_and_guard_still_applies(client, tmp_path):
+    assert client.get("/browse", params={"path": str(tmp_path / "nope")}).status_code == 404
+    f = tmp_path / "a.mp4"
+    f.write_bytes(b"x")
+    assert client.get("/browse", params={"path": str(f)}).status_code == 404  # a file is not a folder
+    assert client.get("/browse", headers={"host": "evil.example:8765"}).status_code == 403
+
+
 def test_job_page_renders_shortlist_and_waiting_state(client):
     job_id, cid = make_job()
     html = client.get(f"/jobs/{job_id}").text
@@ -77,14 +103,14 @@ def test_job_page_renders_shortlist_and_waiting_state(client):
     make_job("j2", status="waiting", stage="authorize")
     db.update_job("j2", authorized_usd=None, estimate_usd=0.1)
     html = client.get("/jobs/j2").text
-    assert "Authorize paid work (hard cap $1.50)" in html
+    assert "Approve up to $1.50 and continue" in html
 
 
 def test_empty_shortlist_state(client):
     job_id, cid = make_job()
     db.x("UPDATE candidates SET shortlisted=0, rank=NULL")
     html = client.get(f"/jobs/{job_id}").text
-    assert "No strong moments in this class" in html and "Other candidates (1)" in html
+    assert "No strong moments in this class" in html and "Other moments (1)" in html
 
 
 def test_review_save_round_trip_persists(client):
@@ -130,7 +156,7 @@ def test_indeterminate_call_retry_resolves_then_resumes(client, monkeypatch):
     job_id, _ = make_job(status="paused", stage="score")
     call_id = db.x("INSERT INTO paid_calls(job_id, key, kind, state, est_usd, created, updated) "
                    "VALUES (?, 'jev:1', 'jev', 'indeterminate', 0.002, 0, 0)", job_id)
-    assert "Retry (may bill again)" in client.get(f"/jobs/{job_id}").text
+    assert "Retry (may charge again)" in client.get(f"/jobs/{job_id}").text
     resumed = []
     monkeypatch.setattr(pipeline, "resume", resumed.append)
     client.post(f"/jobs/{job_id}/calls/{call_id}/retry")
@@ -192,7 +218,7 @@ def test_orphan_sent_call_shows_and_draft_refused_while_preparing(client):
     db.x("INSERT INTO paid_calls(job_id, key, kind, state, est_usd, created, updated) "
          "VALUES (?, 'draft:99', 'draft', 'sent', 0.002, 0, 0)", job_id)
     html = client.get(f"/jobs/{job_id}").text
-    assert "needs reconciliation" in html and "draft:99" in html
+    assert "without an answer being saved" in html and "draft:99" in html
     db.update_job(job_id, status="running")
     assert client.post(f"/jobs/{job_id}/clips/{cid}/draft").status_code == 409
     assert "disabled" in client.get(f"/jobs/{job_id}/clips/{cid}").text.split('id="draft-run"')[1][:20]
@@ -202,6 +228,6 @@ def test_unscored_category_shows_choose_option(client):
     job_id, cid = make_job()
     db.x("UPDATE candidates SET category=NULL, score=NULL")
     html = client.get(f"/jobs/{job_id}/clips/{cid}").text
-    assert '<option value="" selected>— choose —</option>' in html
+    assert '<option value="" selected>Choose…</option>' in html
     client.post(f"/jobs/{job_id}/clips/{cid}", json={"category": "", "title": "t"})
     assert db.review(cid)["category"] is None

@@ -2,6 +2,7 @@
 import json
 import os
 import shutil
+import string
 import threading
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -19,6 +20,11 @@ STAGES = ("import", "transcript", "authorize", "transcribe", "candidates", "scor
 CATEGORIES = {"exam_tip": "Exam tip", "worked_example": "Worked example",
               "common_mistake": "Common mistake and correction", "vocabulary": "Vocabulary/phrase",
               "practice_exercise": "Practice exercise", "other": "Other"}
+STAGE_LABELS = {"import": "Copy recording", "transcript": "Check transcript", "authorize": "Approve cost",
+                "transcribe": "Transcribe", "candidates": "Find moments", "score": "Score moments",
+                "prepare": "Draft posts", "review": "Review clips"}
+STATUS_LABELS = {"running": "Working", "waiting": "Needs you", "paused": "Paused", "failed": "Failed",
+                 "done": "Ready", "pending": "To review", "approved": "Approved", "rejected": "Rejected"}
 PLATFORMS = ("facebook", "youtube")
 FIELDS = ("title", "description", "cta")
 
@@ -123,7 +129,8 @@ def fmt_bytes(n):
 
 
 templates.env.filters.update(t=fmt_time, bytes=fmt_bytes, usd=lambda v: f"${float(v or 0):.4f}")
-templates.env.globals.update(CATEGORIES=CATEGORIES, CAP=config.CAP_USD, STAGES=STAGES)
+templates.env.globals.update(CATEGORIES=CATEGORIES, CAP=config.CAP_USD, STAGES=STAGES,
+                             STAGE_LABELS=STAGE_LABELS, STATUS_LABELS=STATUS_LABELS)
 
 
 def page(request, name, status_code=200, **ctx):
@@ -160,6 +167,58 @@ def _check_file(raw, ext, label):
     if not path.is_file():
         return None, f"{label} not found: {path}. Check the path, or copy the file into {config.INBOX}."
     return path, None
+
+
+def _drive_roots():
+    """Starting places for the chooser: drive letters on Windows, else root, plus common folders."""
+    roots = []
+    if os.name == "nt":
+        roots += [{"name": f"{letter}:\\", "path": f"{letter}:\\"}
+                  for letter in string.ascii_uppercase if Path(f"{letter}:\\").exists()]
+    else:
+        roots.append({"name": "/", "path": "/"})
+    seen = {r["path"] for r in roots}
+    for label, p in (("Inbox", config.INBOX), ("Home", Path.home()),
+                     ("Desktop", Path.home() / "Desktop"), ("Downloads", Path.home() / "Downloads")):
+        try:
+            if str(p) not in seen and p.is_dir():
+                seen.add(str(p))
+                roots.append({"name": label, "path": str(p)})
+        except OSError:  # an unreadable profile folder is simply not offered
+            pass
+    return roots
+
+
+def _enumerate(path):
+    dirs, files = [], []
+    with os.scandir(path) as it:
+        for e in it:
+            if e.name.startswith((".", "$")):  # hidden and system folders only add noise
+                continue
+            if e.is_dir():
+                dirs.append({"name": e.name, "path": e.path})
+            elif e.is_file() and e.name.lower().endswith(".mp4"):
+                files.append({"name": e.name, "path": e.path})
+    dirs.sort(key=lambda d: d["name"].casefold())
+    files.sort(key=lambda f: f["name"].casefold())
+    return dirs, files
+
+
+@app.get("/browse")
+def browse(path: str = ""):
+    """Read-only folder listing for the import chooser: folders to open, plus the .mp4 files to pick."""
+    path = path.strip().strip('"')
+    if not path:
+        return {"path": "", "parent": None, "dirs": _drive_roots(), "files": []}
+    p = Path(path)
+    if not p.is_dir():
+        raise HTTPException(404, "That folder does not exist or cannot be read")
+    try:
+        dirs, files = _enumerate(p)
+    except OSError as e:
+        raise HTTPException(403, f"Cannot read that folder: {e.strerror or e}")
+    parent = str(p.parent)
+    return {"path": str(p), "parent": parent if parent != str(p) else None, "dirs": dirs, "files": files}
 
 
 @app.post("/import")
@@ -253,8 +312,10 @@ def _drafting(job):
 
 def _state(rv):
     task = TASKS.get(f"render:{rv['candidate_id']}", {})
-    return {"status": rv["status"], "preview_ok": pipeline.preview_current(rv),
-            "preview_url": _media_url(rv["preview_path"]) if pipeline.preview_current(rv) else None,
+    ok = pipeline.preview_current(rv)
+    return {"status": rv["status"], "preview_ok": ok,
+            "preview_url": _media_url(rv["preview_path"]) if ok else None,
+            "landscape_url": _media_url(pipeline.landscape_path(rv["preview_path"])) if ok else None,
             "render": task.get("state"), "render_error": task.get("error"),
             "draft": TASKS.get(f"draft:{rv['candidate_id']}", {}).get("state"),
             "draft_error": TASKS.get(f"draft:{rv['candidate_id']}", {}).get("error")}
@@ -436,7 +497,8 @@ def export_page(request: Request, job_id: str, error: str = ""):
             rv = db.one("SELECT * FROM reviews WHERE candidate_id=?", entry["candidate_id"])
             packages.append({**entry, "path": folder, "files": sorted(p.name for p in folder.iterdir()),
                              "posted": (rv or {}).get("posted") or {},
-                             "video_url": _media_url(folder / "video.mp4") if (folder / "video.mp4").exists() else None})
+                             "video_url": _media_url(folder / "portrait.mp4") if (folder / "portrait.mp4").exists() else None,
+                             "landscape_url": _media_url(folder / "landscape.mp4") if (folder / "landscape.mp4").exists() else None})
     skipped = json.loads((root / "skipped.json").read_text(encoding="utf-8")) if (root / "skipped.json").exists() else []
     approved = db.one("SELECT COUNT(*) AS n FROM reviews r JOIN candidates c ON c.id=r.candidate_id "
                       "WHERE c.job_id=? AND r.status='approved'", job_id)["n"]

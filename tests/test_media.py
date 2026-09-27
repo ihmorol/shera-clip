@@ -87,6 +87,18 @@ def test_render_full_from_start(main, tmp_path):
     assert not list(tmp_path.glob("*.ass")) and not list(tmp_path.glob("*.part"))
 
 
+
+def _audio(path):
+    return subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries",
+                           "stream=codec_name,sample_rate,channels,profile", "-of", "csv=p=0", str(path)],
+                          capture_output=True, text=True, check=True).stdout
+
+
+def test_render_landscape_keeps_original_audio(main, tmp_path):
+    out = media.render(main, 1, 4, {"mode": "full"}, CAPS, "ignored in landscape", tmp_path / "l.mp4", landscape=True)
+    assert media.verify(out, 3, (1920, 1080)) == []
+    assert _audio(out) == _audio(main)  # stream-copied: same codec, rate, channels, profile
+
 def test_render_is_cut_on_source_timeline(main, vfr, tmp_path):
     # main tone starts at 1 s -> a clip from 0.5 s hears it at ~0.5 s
     out = media.render(main, 0.5, 4, {"mode": "full"}, [], "", tmp_path / "b.mp4")

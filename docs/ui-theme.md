@@ -15,11 +15,12 @@ Make a three-hour class feel like a small, reviewable set of teaching decisions.
 
 ## Visual character
 
-- **Color strategy:** restrained neutral surfaces with one task accent. Reserve semantic colors for connected, processing, needs attention, failed, and approved states. The future Rimons IELTS brand accent may replace the provisional accent without changing meaning.
-- **Typography:** one clear workhorse sans for Bangla and Latin UI text; use a font stack with verified Bangla glyph coverage. Numbers, timestamps, and costs must be easily scanned. Do not use a display face for controls.
-- **Material and structure:** crisp panels, aligned baselines, strong grouping, and a deliberate timeline spine. Keep the video and transcript visually primary. Avoid nested card grids and oversized KPI tiles that make the operator search for the actual class.
-- **Motion:** short state feedback only, around 150–250 ms where helpful. No autoplay flourishes, animated loading sequences, or movement that competes with video review. Respect reduced-motion preference.
-- **Shape:** one consistent control and corner vocabulary across lists, timeline handles, forms, dialogs, and export rows. Exact values are implementation tokens, not settled by this brief.
+The built visual system, including tokens, components, and rules, is recorded in [DESIGN.md](../DESIGN.md), which replaces the provisional neutral/blue direction that used to be here.
+
+- **World:** a film cutting room. The ground is dark darkroom teal, panels are one tone lighter, and text is warm film-base ivory.
+- **Accent:** colour-negative orange marks only pressable actions and the current step. Leader green means approved, grease-pencil yellow means the operator is needed, safety red means failed, and cyan means working.
+- **Signatures:** a sprocket-holed film-strip step rail, mono edge-print timecodes, and a sticky review bench with portrait 9:16 and landscape 16:9 previews side by side.
+- **Type and motion:** system sans with Bangla coverage, 150ms state feedback, and no motion under reduced-motion.
 
 ## Interaction contract
 

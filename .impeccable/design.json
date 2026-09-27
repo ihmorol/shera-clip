@@ -1,0 +1,369 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-27T11:20:36+00:00",
+  "title": "Design System: Shera Clip",
+  "extensions": {
+    "colorMeta": {
+      "ground": {
+        "role": "neutral",
+        "displayName": "Darkroom Teal",
+        "canonical": "oklch(21.6% 0.025 208.8)",
+        "tonalRamp": [
+          "oklch(15% 0.025 208.8)",
+          "oklch(25% 0.025 208.8)",
+          "oklch(35% 0.025 208.8)",
+          "oklch(45% 0.025 208.8)",
+          "oklch(55% 0.025 208.8)",
+          "oklch(65% 0.025 208.8)",
+          "oklch(80% 0.025 208.8)",
+          "oklch(95% 0.025 208.8)"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Bench Teal",
+        "canonical": "oklch(25.9% 0.032 209.1)",
+        "tonalRamp": [
+          "oklch(15% 0.032 209.1)",
+          "oklch(25% 0.032 209.1)",
+          "oklch(35% 0.032 209.1)",
+          "oklch(45% 0.032 209.1)",
+          "oklch(55% 0.032 209.1)",
+          "oklch(65% 0.032 209.1)",
+          "oklch(80% 0.032 209.1)",
+          "oklch(95% 0.032 209.1)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Film-base Ivory",
+        "canonical": "oklch(93.6% 0.023 75.9)",
+        "tonalRamp": [
+          "oklch(15% 0.023 75.9)",
+          "oklch(25% 0.023 75.9)",
+          "oklch(35% 0.023 75.9)",
+          "oklch(45% 0.023 75.9)",
+          "oklch(55% 0.023 75.9)",
+          "oklch(65% 0.023 75.9)",
+          "oklch(80% 0.023 75.9)",
+          "oklch(95% 0.023 75.9)"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Fixer Grey-teal",
+        "canonical": "oklch(79.9% 0.031 188.7)",
+        "tonalRamp": [
+          "oklch(15% 0.031 188.7)",
+          "oklch(25% 0.031 188.7)",
+          "oklch(35% 0.031 188.7)",
+          "oklch(45% 0.031 188.7)",
+          "oklch(55% 0.031 188.7)",
+          "oklch(65% 0.031 188.7)",
+          "oklch(80% 0.031 188.7)",
+          "oklch(95% 0.031 188.7)"
+        ]
+      },
+      "mask": {
+        "role": "primary",
+        "displayName": "Negative Orange Mask",
+        "canonical": "oklch(75% 0.167 50.5)",
+        "tonalRamp": [
+          "oklch(15% 0.167 50.5)",
+          "oklch(25% 0.167 50.5)",
+          "oklch(35% 0.167 50.5)",
+          "oklch(45% 0.167 50.5)",
+          "oklch(55% 0.167 50.5)",
+          "oklch(65% 0.167 50.5)",
+          "oklch(80% 0.167 50.5)",
+          "oklch(95% 0.167 50.5)"
+        ]
+      },
+      "leader": {
+        "role": "secondary",
+        "displayName": "Leader Green",
+        "canonical": "oklch(82% 0.127 152.8)",
+        "tonalRamp": [
+          "oklch(15% 0.127 152.8)",
+          "oklch(25% 0.127 152.8)",
+          "oklch(35% 0.127 152.8)",
+          "oklch(45% 0.127 152.8)",
+          "oklch(55% 0.127 152.8)",
+          "oklch(65% 0.127 152.8)",
+          "oklch(80% 0.127 152.8)",
+          "oklch(95% 0.127 152.8)"
+        ]
+      },
+      "pencil": {
+        "role": "secondary",
+        "displayName": "Grease Pencil",
+        "canonical": "oklch(85.3% 0.134 87.5)",
+        "tonalRamp": [
+          "oklch(15% 0.134 87.5)",
+          "oklch(25% 0.134 87.5)",
+          "oklch(35% 0.134 87.5)",
+          "oklch(45% 0.134 87.5)",
+          "oklch(55% 0.134 87.5)",
+          "oklch(65% 0.134 87.5)",
+          "oklch(80% 0.134 87.5)",
+          "oklch(95% 0.134 87.5)"
+        ]
+      },
+      "safety": {
+        "role": "secondary",
+        "displayName": "Safety Red",
+        "canonical": "oklch(72.3% 0.172 27.9)",
+        "tonalRamp": [
+          "oklch(15% 0.172 27.9)",
+          "oklch(25% 0.172 27.9)",
+          "oklch(35% 0.172 27.9)",
+          "oklch(45% 0.172 27.9)",
+          "oklch(55% 0.172 27.9)",
+          "oklch(65% 0.172 27.9)",
+          "oklch(80% 0.172 27.9)",
+          "oklch(95% 0.172 27.9)"
+        ]
+      },
+      "run": {
+        "role": "secondary",
+        "displayName": "Run Cyan",
+        "canonical": "oklch(82.1% 0.088 201)",
+        "tonalRamp": [
+          "oklch(15% 0.088 201.0)",
+          "oklch(25% 0.088 201.0)",
+          "oklch(35% 0.088 201.0)",
+          "oklch(45% 0.088 201.0)",
+          "oklch(55% 0.088 201.0)",
+          "oklch(65% 0.088 201.0)",
+          "oklch(80% 0.088 201.0)",
+          "oklch(95% 0.088 201.0)"
+        ]
+      },
+      "film": {
+        "role": "neutral",
+        "displayName": "Film Stock",
+        "canonical": "oklch(17.3% 0.012 60.6)",
+        "tonalRamp": [
+          "oklch(15% 0.012 60.6)",
+          "oklch(25% 0.012 60.6)",
+          "oklch(35% 0.012 60.6)",
+          "oklch(45% 0.012 60.6)",
+          "oklch(55% 0.012 60.6)",
+          "oklch(65% 0.012 60.6)",
+          "oklch(80% 0.012 60.6)",
+          "oklch(95% 0.012 60.6)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Home page head only."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page and clip titles (h1)."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Panel headings (h2)."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "All running text; 15px root."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Table headers, figure captions, readout terms."
+      },
+      "timecode": {
+        "displayName": "Edge-print Mono",
+        "purpose": "Timecodes, paths, keys, numeric inputs."
+      }
+    },
+    "shadows": [
+      {
+        "name": "bench-lift",
+        "value": "0 10px 30px -12px rgba(0,0,0,.55), 0 2px 6px -2px rgba(0,0,0,.35)",
+        "purpose": "Sticky review bench and the file-chooser dialog only."
+      },
+      {
+        "name": "focus-ring-field",
+        "value": "0 0 0 3px rgba(255,138,61,.12)",
+        "purpose": "Mask-wash ring on focused inputs."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-ease",
+        "value": "150ms ease-out",
+        "purpose": "Colour, border, background changes on controls, rows, fields."
+      },
+      {
+        "name": "press",
+        "value": "transform 100ms ease-out, translateY(1px)",
+        "purpose": "Button press."
+      },
+      {
+        "name": "run-pulse",
+        "value": "1.4s ease-in-out infinite (opacity to .25)",
+        "purpose": "Dot on the running badge."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "all transitions and animations off",
+        "purpose": "prefers-reduced-motion: reduce."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "bench-stack",
+        "value": "1180px"
+      },
+      {
+        "name": "strip-wrap",
+        "value": "900px"
+      },
+      {
+        "name": "phone",
+        "value": "640px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The page's one orange action: Import class, Save and render previews, Approve cost, Export.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Save and render previews</button>",
+      "css": ".ds-btn { display:inline-flex; gap:.45rem; align-items:center; font-family:var(--sans); font-weight:600; font-size:.93rem; line-height:1.2; padding:.55rem 1rem; border-radius:var(--r-sm); border:1px solid var(--line-hi); background:var(--raised); color:var(--ink); cursor:pointer; transition:background-color .15s ease-out, border-color .15s ease-out, color .15s ease-out, transform .1s ease-out; } .ds-btn:focus-visible { outline:2px solid var(--mask); outline-offset:2px; } .ds-btn:active { transform:translateY(1px); } .ds-btn-primary { background:var(--mask); border-color:var(--mask); color:var(--mask-ink); } .ds-btn-primary:hover { background:var(--mask-hi); border-color:var(--mask-hi); } .ds-btn-primary:active { background:var(--mask-lo); } .ds-btn:disabled { opacity:.42; cursor:not-allowed; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Default for every other pressable thing: Save only, Choose, Open, Previous/Next.",
+      "html": "<button class=\"ds-btn2\">Save only</button>",
+      "css": ".ds-btn2 { font-family:var(--sans); font-weight:600; font-size:.93rem; padding:.55rem 1rem; border-radius:var(--r-sm); border:1px solid var(--line-hi); background:var(--raised); color:var(--ink); cursor:pointer; transition:background-color .15s ease-out, border-color .15s ease-out; } .ds-btn2:hover { background:#1c4148; border-color:var(--ink-3); } .ds-btn2:focus-visible { outline:2px solid var(--mask); outline-offset:2px; } .ds-btn2:active { transform:translateY(1px); }"
+    },
+    {
+      "name": "Approve / Reject Pair",
+      "kind": "button",
+      "refersTo": "button-approve",
+      "description": "Leader-green Approve beside a secondary Reject, split by a line under the bench actions.",
+      "html": "<div class=\"ds-decide\"><button class=\"ds-ok\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m5 12.5 4.5 4.5L19 7.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>Approve</button><button class=\"ds-rej\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6.5 6.5l11 11m0-11-11 11\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\"/></svg>Reject</button></div>",
+      "css": ".ds-decide { display:grid; grid-template-columns:1fr 1fr; gap:.55rem; padding-top:.7rem; border-top:1px solid var(--line); width:20rem; } .ds-decide button { display:inline-flex; gap:.45rem; align-items:center; justify-content:center; font-family:var(--sans); font-weight:600; font-size:.93rem; padding:.55rem 1rem; border-radius:var(--r-sm); border:1px solid var(--line-hi); background:var(--raised); color:var(--ink); cursor:pointer; transition:background-color .15s ease-out; } .ds-decide .ds-ok { background:var(--leader); border-color:var(--leader); color:#062212; } .ds-decide .ds-ok:hover { background:#9be8b3; border-color:#9be8b3; } .ds-decide .ds-rej:hover { background:#1c4148; border-color:var(--ink-3); } .ds-decide button:focus-visible { outline:2px solid var(--mask); outline-offset:2px; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Outline-only destructive action (Delete this class), always behind a confirm.",
+      "html": "<button class=\"ds-danger\">Delete this class</button>",
+      "css": ".ds-danger { font-family:var(--sans); font-weight:600; font-size:.93rem; padding:.55rem 1rem; border-radius:var(--r-sm); background:transparent; color:var(--safety); border:1px solid rgba(255,116,102,.45); cursor:pointer; transition:background-color .15s ease-out, border-color .15s ease-out; } .ds-danger:hover { background:var(--safety-wash); border-color:var(--safety); } .ds-danger:focus-visible { outline:2px solid var(--mask); outline-offset:2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Recessed well field; focus turns the border orange with a soft mask ring.",
+      "html": "<input class=\"ds-input\" placeholder=\"Choose a file, or paste its full path\">",
+      "css": ".ds-input { font-family:var(--sans); font-size:.95rem; padding:.5rem .65rem; width:22rem; border:1px solid var(--line); border-radius:var(--r-sm); background:var(--well); color:var(--ink); transition:border-color .15s ease-out, background-color .15s ease-out; } .ds-input::placeholder { color:var(--ink-3); } .ds-input:hover { border-color:var(--line-hi); } .ds-input:focus-visible { outline:none; border-color:var(--mask); background:#061214; box-shadow:0 0 0 3px var(--mask-wash); }"
+    },
+    {
+      "name": "State Badges",
+      "kind": "chip",
+      "refersTo": "badge-approved",
+      "description": "Wash-plus-ink pills with a dot; running pulses.",
+      "html": "<span class=\"ds-badge\">To review</span> <span class=\"ds-badge ds-ok\">Approved</span> <span class=\"ds-badge ds-run\">Working</span> <span class=\"ds-badge ds-attn\">Needs you</span> <span class=\"ds-badge ds-fail\">Rejected</span>",
+      "css": ".ds-badge { display:inline-flex; align-items:center; gap:.4rem; padding:.15rem .6rem; border-radius:999px; font-family:var(--sans); font-size:.8rem; font-weight:600; background:var(--raised); color:var(--ink-2); } .ds-badge::before { content:\"\"; width:.45rem; height:.45rem; border-radius:50%; background:currentColor; } .ds-ok { background:var(--leader-wash); color:var(--leader); } .ds-attn { background:var(--pencil-wash); color:var(--pencil); } .ds-fail { background:var(--safety-wash); color:var(--safety); } .ds-run { background:var(--run-wash); color:var(--run); } .ds-run::before { animation:ds-pulse 1.4s ease-in-out infinite; } @keyframes ds-pulse { 50% { opacity:.25; } } @media (prefers-reduced-motion: reduce) { .ds-run::before { animation:none; } }"
+    },
+    {
+      "name": "Breadcrumb Top Bar",
+      "kind": "nav",
+      "refersTo": "",
+      "description": "Sticky well-coloured bar: orange reel mark, bold product name, muted crumbs.",
+      "html": "<header class=\"ds-top\"><a class=\"ds-brand\" href=\"#\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><circle cx=\"12\" cy=\"12\" r=\"1.6\"/><circle cx=\"12\" cy=\"6.8\" r=\"1.9\"/><circle cx=\"12\" cy=\"17.2\" r=\"1.9\"/><circle cx=\"6.8\" cy=\"12\" r=\"1.9\"/><circle cx=\"17.2\" cy=\"12\" r=\"1.9\"/></g></svg>Shera Clip</a><nav class=\"ds-crumbs\"><a href=\"#\">Classes</a><span>/</span><a href=\"#\">Writing Task 2</a><span>/</span><span>Clip 1</span></nav></header>",
+      "css": ".ds-top { display:flex; gap:1.25rem; align-items:center; padding:.7rem 1.5rem; border-bottom:1px solid var(--line); background:var(--well); font-family:var(--sans); } .ds-brand { display:inline-flex; gap:.5rem; align-items:center; font-weight:700; color:var(--ink); text-decoration:none; } .ds-brand svg { color:var(--mask); } .ds-crumbs { display:flex; gap:.5rem; color:var(--ink-3); font-size:.92rem; } .ds-crumbs a { color:var(--ink-2); text-decoration:none; } .ds-crumbs a:hover { color:var(--ink); text-decoration:underline; } .ds-crumbs a:focus-visible { outline:2px solid var(--mask); outline-offset:2px; } .ds-crumbs > span:last-child { color:var(--ink); }"
+    },
+    {
+      "name": "Next Box",
+      "kind": "card",
+      "refersTo": "next-box",
+      "description": "The one plain-words instruction per page; attn variant for cost approval or pauses.",
+      "html": "<div class=\"ds-next\"><p><strong>Next:</strong> review the 4 suggested clips below.</p><button class=\"ds-next-go\">Review the next clip</button></div><div class=\"ds-next ds-attn\"><h2>Approve the cost to continue</h2><p>Work stops before the $1.50 cap.</p></div>",
+      "css": ".ds-next { margin:0 0 .75rem; padding:1rem 1.15rem; border-radius:var(--r-sm); background:var(--raised); border:1px solid var(--line-hi); color:var(--ink); font-family:var(--sans); } .ds-next p { margin:0 0 .6rem; } .ds-next h2 { margin:0 0 .4rem; font-size:1.15rem; font-weight:650; } .ds-attn { background:linear-gradient(var(--pencil-wash), var(--pencil-wash)), var(--raised); border-color:rgba(244,201,93,.45); } .ds-attn h2 { color:var(--pencil); } .ds-next-go { font-family:var(--sans); font-weight:600; font-size:.93rem; padding:.55rem 1rem; border-radius:var(--r-sm); background:var(--mask); border:1px solid var(--mask); color:var(--mask-ink); cursor:pointer; } .ds-next-go:hover { background:var(--mask-hi); } .ds-next-go:focus-visible { outline:2px solid var(--mask); outline-offset:2px; }"
+    },
+    {
+      "name": "Film-strip Step Rail",
+      "kind": "custom",
+      "refersTo": "strip",
+      "description": "Signature: pipeline steps as film frames between sprocket holes; current frame is orange.",
+      "html": "<ol class=\"ds-strip\"><li class=\"done\"><span>1</span>Copy recording</li><li class=\"done\"><span>2</span>Check transcript</li><li class=\"current\"><span>3</span>Approve cost</li><li><span>4</span>Transcribe</li></ol>",
+      "css": ".ds-strip { --hole: radial-gradient(circle at center, var(--ground) 0 3px, transparent 3.5px); display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:3px; list-style:none; margin:0; padding:14px 6px; background:var(--hole) 0 3px / 14px 8px repeat-x, var(--hole) 0 calc(100% - 3px) / 14px 8px repeat-x, var(--film); border-radius:6px; width:36rem; font-family:var(--sans); } .ds-strip li { display:flex; flex-direction:column; gap:.15rem; padding:.45rem .6rem; border-radius:3px; background:#231c16; color:#a1937f; font-size:.82rem; line-height:1.25; } .ds-strip span { font-family:var(--mono); font-size:.72rem; } .ds-strip li.done { background:#1d2a22; color:var(--leader); } .ds-strip li.current { background:var(--mask); color:var(--mask-ink); font-weight:700; }"
+    },
+    {
+      "name": "Review Bench Previews",
+      "kind": "custom",
+      "refersTo": "preview-frame-portrait",
+      "description": "Signature: portrait 9:16 and landscape 16:9 frames side by side, empty slots in film stock with a dashed edge.",
+      "html": "<div class=\"ds-previews\"><figure class=\"ds-frame\"><div class=\"ds-slot ds-portrait\">Portrait preview appears here</div><figcaption>Portrait 9:16 <span>· Shorts, Reels</span></figcaption></figure><div class=\"ds-side\"><figure class=\"ds-frame\"><div class=\"ds-slot ds-land\">Landscape preview</div><figcaption>Landscape 16:9 <span>· YouTube, Facebook feed</span></figcaption></figure><button class=\"ds-render\">Save and render previews</button></div></div>",
+      "css": ".ds-previews { display:grid; grid-template-columns:10rem 16rem; gap:1rem; align-items:start; font-family:var(--sans); color:var(--ink); } .ds-side { display:grid; gap:1rem; } .ds-frame { margin:0; display:grid; gap:.4rem; } .ds-slot { display:grid; place-items:center; text-align:center; padding:1rem; color:var(--ink-3); font-size:.85rem; background:var(--film); border:1px dashed #3a2e24; border-radius:8px; } .ds-portrait { aspect-ratio:9/16; } .ds-land { aspect-ratio:16/9; } .ds-frame figcaption { font-size:.82rem; font-weight:600; } .ds-frame figcaption span { color:var(--ink-2); font-weight:400; } .ds-render { font-family:var(--sans); font-weight:600; font-size:.93rem; padding:.55rem 1rem; border-radius:var(--r-sm); background:var(--mask); border:1px solid var(--mask); color:var(--mask-ink); cursor:pointer; } .ds-render:hover { background:var(--mask-hi); } .ds-render:focus-visible { outline:2px solid var(--mask); outline-offset:2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Cutting Room",
+    "overview": "Shera Clip is a film editor's bench, not an admin dashboard. A class is a roll of film, the suggested moments are trims pulled from it, and approval is the editor's grease-pencil mark. The whole interface sits in a dark darkroom teal (the cyan cast of a colour negative's shadows), text is printed in warm film-base ivory, and the negative's orange mask is the one colour you can press. The system rejects the white-card, blue-accent admin panel it replaced.\n\nDensity is a working editor's: compact rows, fixed label grids, three instrument readouts on the class header, and one plain-words \"Next\" instruction at the top of every page so the operator never has to guess which panel matters. The video and transcript take most of the width on the review page. Decoration comes from the film world itself: sprocket perforations on the step rail and every preview gate, edge-print mono for timecodes, and black letterboxed frames for every preview.\n\nThe app runs on the operator's laptop and uses system fonts only. The font stack is chosen for Bangla coverage (Nirmala UI), so type has no display face. Hierarchy comes from weight, size, and tone.",
+    "keyCharacteristics": [
+      "Dark tonal stack (well, ground, panel, raised) instead of shadows.",
+      "One action colour (orange mask). Semantic state is shown as a 12% wash with full-strength ink.",
+      "Film-strip step rail with sprocket holes, one frame per pipeline step.",
+      "A sticky cutting bench with portrait 9:16 and landscape 16:9 previews side by side.",
+      "Mono edge-print timecodes and tabular numbers wherever time, money, or rank is read."
+    ],
+    "rules": [
+      {
+        "name": "The Orange Mask Rule",
+        "body": "Filled orange appears only on something you can press or on the current step. Orange ink also marks the editor's own coordinates: the clip rank, timecodes inside the clip span, trim-step numerals, and the reel mark. Orange never shows a status and never decorates.",
+        "section": "colors"
+      },
+      {
+        "name": "The Grease Pencil Rule",
+        "body": "Yellow means \"you are needed.\" Waiting, paused, and warning share it, and nothing else uses it.",
+        "section": "colors"
+      },
+      {
+        "name": "The Wash Rule",
+        "body": "Status shows as a 12% wash with full-strength ink, never as a solid block. Solid signal fills are reserved for the Approve button and the current strip frame.",
+        "section": "colors"
+      },
+      {
+        "name": "The Edge-Print Rule",
+        "body": "Every timecode, path, and typed number is set in mono, and every column of numbers uses tabular figures and right alignment.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tonal Stack Rule",
+        "body": "Inputs, lists, and readouts go down into `well`, and controls go up into `raised`. Only a surface that floats above scrolling content gets a shadow.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** keep filled orange for the page's one primary action and the current step. Everything else pressable is `raised` secondary.",
+      "**Do** show every state as a wash plus ink badge, using the same four signals: leader, pencil, safety, run.",
+      "**Do** set time, paths, and typed numbers in the mono edge-print face with tabular figures.",
+      "**Do** put one \"Next\" box at the top of each page and phrase it as a plain instruction.",
+      "**Do** keep the portrait and landscape previews side by side on the bench, each labelled with its ratio and destinations.",
+      "**Do** show state changes with colour transitions of about 150ms, and turn all motion off under `prefers-reduced-motion`."
+    ],
+    "donts": [
+      "**Don't** bring back white cards, neutral grey surfaces, or a blue accent. This world replaced them.",
+      "**Don't** use orange for a status, a chart, or decoration.",
+      "**Don't** use grease-pencil yellow for anything that does not need the operator.",
+      "**Don't** add shadows to panels at rest. Depth comes from the tonal stack.",
+      "**Don't** use a display or web font. The system stack exists for Bangla coverage.",
+      "**Don't** let pending strip-frame text fall below 4.5:1 (`#a1937f` on the film frame measures about 5.6:1)."
+    ]
+  }
+}

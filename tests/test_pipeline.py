@@ -42,7 +42,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(media, "speech_intervals", lambda p: [(0.0, DUR)])
     monkeypatch.setattr(media, "render", lambda *a, **k: (calls["render"].append(a), a[6].write_bytes(b"mp4")))
     monkeypatch.setattr(media, "thumbnail", lambda v, out, at: out.write_bytes(b"jpg"))
-    monkeypatch.setattr(media, "verify", lambda p, d: [])
+    monkeypatch.setattr(media, "verify", lambda p, d, size=None: [])
 
     def jev(text):
         calls["jev"].append(text)
@@ -173,7 +173,8 @@ def test_export_packages_only_approved(env):
     folder = root / index[0]["folder"]
     post = json.loads((folder / "post.json").read_text(encoding="utf-8"))
     assert post["source_sha256"] == "sha-fake" and post["tags"] == ["writing"] and post["problems"] == []
-    assert (folder / "video.mp4").exists() and (folder / "thumbnail.jpg").exists()
+    assert all((folder / f).exists() for f in ("portrait.mp4", "landscape.mp4", "thumbnail.jpg"))
+    assert calls["render"][-1][6].name == "landscape.mp4"
     assert (folder / "captions.srt").read_text(encoding="utf-8").startswith("1\n00:00:00,000 --> ")
 
 
@@ -236,3 +237,18 @@ def test_ensure_review_fills_category_after_scoring(env):
 def test_state_hash_treats_missing_title_as_empty():
     rv = {"start": 1, "end": 2, "layout": {"mode": "full"}, "captions": [], "title": None}
     assert pipeline.state_hash(rv) == pipeline.state_hash({**rv, "title": ""})
+
+
+def test_silent_recording_stops_before_any_paid_call(env, monkeypatch):
+    src, vtt, calls = env
+    monkeypatch.setattr(media, "speech_intervals", lambda p: [(DUR - 4, DUR)])  # a few seconds of noise
+    jid = pipeline.start_job(src)
+    job = db.get_job(jid)
+    assert job["status"] == "failed" and "silent" in job["error"] and job["authorized_usd"] is None
+    assert not ledger.calls(jid)
+
+
+def test_check_audible_threshold():
+    pipeline.check_audible([(0, 10)], 20)  # a short clip that is half speech is fine
+    with pytest.raises(ValueError):
+        pipeline.check_audible([(0, 4)], 2212)
