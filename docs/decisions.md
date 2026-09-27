@@ -19,6 +19,7 @@
 | D12 | Keep local jobs until explicit deletion. Save post URLs and offer optional manual performance metrics; neither blocks package export. |
 | D13 | The one-class prototype is distinct from publish-ready. Publish-ready requires three classes, 60 independent human labels, at least 7 worthwhile held-out top-ten suggestions, 3 approved held-out clips, media checks, and user-assisted private platform previews. |
 | D14 | Agents may choose routine implementation details. Changes to product scope, quality rules, UI wording/layout, external spend, or acceptance criteria require owner decision. |
+| D15 | 2026-09-26, [#6](https://github.com/ihmorol/shera-clip/issues/6): Build local MP4/VTT import first; the phase-1 working prototype does not need Zoom credentials. Zoom API listing and import follow in phase 2. Gate A1 still requires Zoom API import before publish-ready. |
 
 ## Inputs pending, not permission to guess
 
