@@ -44,12 +44,13 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(media, "thumbnail", lambda v, out, at: out.write_bytes(b"jpg"))
     monkeypatch.setattr(media, "verify", lambda p, d, size=None: [])
 
-    def jev(text):
+    def jev(text, original=None):
         calls["jev"].append(text)
         n = int(text.split()[-1])  # last cue number in the window
-        return {"value": 2 + n % 3, "clarity": 3, "opening": n % 5, "category": "exam_tip"}, 0.001
+        return {"value": 2 + n % 3, "clarity": 3, "opening": n % 5, "teacher": 0.9, "complete": 0.8,
+                "category": "exam_tip", "raw": {"value": {"type": "score", "score": 2 + n % 3}}}, 0.001
 
-    def draft(text, category):
+    def draft(text, category, english=None):
         calls["draft"].append(text)
         t = {"title": "Task 2", "description": "d", "cta": "Follow for more"}
         return {"facebook": t, "youtube": t}, 0.001
@@ -72,7 +73,7 @@ def test_good_vtt_waits_for_authorization_then_runs_to_done(env):
     assert (job["stage"], job["status"], job["error"]) == ("review", "done", None)
     cands = db.candidates(jid)
     short = [c for c in cands if c["shortlisted"]]
-    assert cands and all(15 <= c["end"] - c["start"] <= 60 for c in cands)
+    assert cands and all(60 <= c["end"] - c["start"] <= 90 for c in cands)
     assert 0 < len(short) <= 10 and sorted(c["rank"] for c in short) == list(range(1, len(short) + 1))
     assert len(calls["jev"]) == len(cands) and len(calls["draft"]) == len(short)
     rv = db.review(short[0]["id"])
@@ -83,8 +84,9 @@ def test_good_vtt_waits_for_authorization_then_runs_to_done(env):
 
 def test_budget_stop_pauses_and_keeps_partial_work(env, monkeypatch):
     src, vtt, calls = env
-    monkeypatch.setattr(providers, "jev_score", lambda t: (calls["jev"].append(t) or
-                                                           {"value": 3, "clarity": 3, "opening": 3, "category": "other"}, 0.4))
+    monkeypatch.setattr(providers, "jev_score", lambda t, o=None: (calls["jev"].append(t) or
+                                                                   {"value": 3, "clarity": 3, "opening": 3, "teacher": 1,
+                                                                    "complete": 1, "category": "other", "raw": {}}, 0.4))
     jid = pipeline.start_job(src, vtt)
     pipeline.authorize(jid)
     job = db.get_job(jid)
@@ -97,7 +99,7 @@ def test_budget_stop_pauses_and_keeps_partial_work(env, monkeypatch):
 def test_draft_provider_error_does_not_fail_job(env, monkeypatch):
     src, vtt, _ = env
 
-    def boom(text, category):
+    def boom(text, category, english=None):
         raise ledger.ProviderError("OPENROUTER_API_KEY not set")
 
     monkeypatch.setattr(providers, "draft_post", boom)
@@ -112,11 +114,11 @@ def test_resume_after_restart_never_recalls_done_work(env, monkeypatch):
     src, vtt, calls = env
     real = providers.jev_score
 
-    def crash_on_third(text):
+    def crash_on_third(text, original=None):
         if len(calls["jev"]) == 2:
             calls["jev"].append(text)
             raise Crash()
-        return real(text)
+        return real(text, original)
 
     monkeypatch.setattr(providers, "jev_score", crash_on_third)
     jid = pipeline.start_job(src, vtt)
@@ -213,7 +215,7 @@ def test_draft_never_overwrites_operator_text(env, monkeypatch):
     cid = db.candidates(jid)[0]["id"]
     typed = {"facebook": {"title": "mine", "description": "", "cta": ""}, "youtube": {}}
 
-    def slow_draft(text, category):  # the operator saves while the paid call is out
+    def slow_draft(text, category, english=None):  # the operator saves while the paid call is out
         db.update_review(cid, drafts=typed)
         return {"facebook": {"title": "model", "description": "d", "cta": "c"}, "youtube": {}}, 0.001
 
@@ -296,3 +298,32 @@ def test_ai_draft_fills_an_empty_on_video_title(env):
     pipeline.authorize(jid)
     top = next(c for c in db.candidates(jid) if c["rank"] == 1)
     assert db.review(top["id"])["title"] == "Task 2"
+
+
+def test_bangla_lines_get_an_english_translation_that_jev_reads(env, monkeypatch):
+    src, vtt, calls = env
+    bn = "আজকে আমরা Task 2 নিয়ে কথা বলব"
+    vtt.write_text(vtt_text().replace("Rimon Ahmed: In Task 2", f"Rimon Ahmed: {bn} In Task 2", 30), encoding="utf-8")
+    sent = []
+    monkeypatch.setattr(providers, "translate", lambda lines: (sent.append(lines), {"en": [f"EN {i}" for i in range(len(lines))]})[1:] + (0.001,))
+    jid = pipeline.start_job(src, vtt)
+    pipeline.authorize(jid)
+    assert db.get_job(jid)["status"] == "done", db.get_job(jid)["error"]
+    units = json.loads((pipeline.job_dir(jid) / "transcript.json").read_text(encoding="utf-8"))["units"]
+    assert len(sent) == 1 and len(sent[0]) == 30 and all(bn in line for line in sent[0])  # only Bangla lines are paid for
+    assert units[0]["en"] == "EN 0" and units[0]["text"].startswith(bn)  # as spoken stays in text
+    assert units[40]["en"] == units[40]["text"]  # English lines are their own translation
+    assert any(t.startswith("EN ") for t in calls["jev"])  # Jev reads the English
+
+
+def test_find_clips_again_starts_over_and_asks_for_cost_again(env):
+    src, vtt, calls = env
+    jid = pipeline.start_job(src, vtt)
+    pipeline.authorize(jid)
+    cid = next(c["id"] for c in db.candidates(jid) if c["rank"] == 1)
+    pipeline.render_preview(cid)
+    pipeline.redo(jid)
+    job = db.get_job(jid)
+    assert (job["stage"], job["status"], job["authorized_usd"]) == ("authorize", "waiting", None)
+    assert not db.q("SELECT candidate_id FROM reviews WHERE candidate_id=?", cid) and not db.candidates(jid)
+    assert not (pipeline.job_dir(jid) / "previews").exists() and ledger.spent(jid) > 0  # earlier spend still counts

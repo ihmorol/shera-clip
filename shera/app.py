@@ -14,15 +14,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from shera import candidates as cand
-from shera import config, db, ledger, pipeline, providers
+from shera import config, db, ledger, media, pipeline, providers
 
 HERE = Path(__file__).parent
-STAGES = ("import", "transcript", "authorize", "transcribe", "candidates", "score", "prepare", "review")
+STAGES = ("import", "transcript", "authorize", "transcribe", "translate", "candidates", "score", "prepare", "review")
 CATEGORIES = {"exam_tip": "Exam tip", "worked_example": "Worked example",
               "common_mistake": "Common mistake and correction", "vocabulary": "Vocabulary/phrase",
               "practice_exercise": "Practice exercise", "other": "Other"}
 STAGE_LABELS = {"import": "Copy recording", "transcript": "Check transcript", "authorize": "Approve cost",
-                "transcribe": "Transcribe", "candidates": "Find moments", "score": "Score moments",
+                "transcribe": "Transcribe", "translate": "Translate", "candidates": "Find moments", "score": "Score moments",
                 "prepare": "Draft posts", "review": "Review clips"}
 STATUS_LABELS = {"running": "Working", "waiting": "Needs you", "paused": "Paused", "failed": "Failed",
                  "done": "Ready", "pending": "To review", "approved": "Approved", "rejected": "Rejected"}
@@ -160,14 +160,22 @@ def explain(c, drafts=None):
     """Why a candidate was suggested, in the scorer's own terms, plus what it teaches."""
     d = drafts if drafts and "error" not in drafts else {}
     post = d.get("youtube") or d.get("facebook") or {}
-    out = {"what": post.get("title") or "", "summary": post.get("description") or "",
-           "opens": opening_line(c["text"] or ""), "why": "", "reasons": []}
+    opens, opens_en = opening_line(c["text"] or ""), opening_line(c.get("text_en") or "")
+    out = {"what": post.get("title") or "", "summary": post.get("description") or "", "opens": opens,
+           "opens_en": opens_en if opens_en and opens_en != opens else "", "why": "", "reasons": []}
     if c["score"] is None:
         return out
     cat = c["category"] or "other"
-    out["why"] = " · ".join([CATEGORIES.get(cat, cat)] + [SHORT[q][_level(c[q])] for q in ("value", "clarity", "opening")])
-    out["reasons"] = [{"label": LABELS[q], "score": c[q], "text": providers.JEV_QUESTIONS[q]["criteria"][_level(c[q])]}
+    speaker = [] if c.get("teacher") is None else ["teacher talking" if c["teacher"] >= 0.5 else "played recording"]
+    out["why"] = " · ".join([CATEGORIES.get(cat, cat)] + speaker +
+                            [SHORT[q][_level(c[q])] for q in ("value", "clarity", "opening")])
+    out["reasons"] = [{"label": LABELS[q], "score": f"{c[q]:.1f}/4", "text": providers.JEV_QUESTIONS[q]["criteria"][_level(c[q])]}
                       for q in ("value", "clarity", "opening")]
+    for q, label in (("teacher", "Who is speaking"), ("complete", "Finishes its point")):
+        if c.get(q) is not None:
+            yes = c[q] >= 0.5
+            out["reasons"].append({"label": label, "score": f"{c[q] * 100:.0f}%",
+                                   "text": providers.JEV_QUESTIONS[q]["criteria"]["true" if yes else "false"]})
     out["category"] = f"{CATEGORIES.get(cat, cat)}: {providers.CATEGORIES.get(cat, '')}"
     return out
 
@@ -179,11 +187,47 @@ def left_out(c, short):
     low = [SHORT[q][_level(c[q])] for q in ("value", "clarity") if (c[q] or 0) < 2]
     if low:
         return "Left out: " + " and ".join(low)
+    if not cand.is_teacher(c):
+        return f"Left out: a played recording, not the teacher (Jev: {c['teacher'] * 100:.0f}% teacher)"
     over = next((k for k in short if min(c["end"], k["end"]) - max(c["start"], k["start"]) > 0), None)
-    return f"Left out: overlaps clip {over['rank']}, which scored higher" if over else "Left out: ranked below the top 10"
+    if over:
+        return f"Left out: overlaps clip {over['rank']}, which scored higher"
+    again = cand.repeat_of(c, short)
+    return f"Left out: repeats clip {again['rank']}" if again else "Left out: ranked below the top 10"
 
 
-templates.env.globals.update(explain=explain, left_out=left_out)
+QUESTION_LABELS = {"value": "Teaching value", "clarity": "Stands alone", "opening": "Opening hook",
+                   "teacher": "Teacher talking (not a played recording)", "complete": "Finishes its point",
+                   "category": "Category"}
+
+
+def jev_answers(c):
+    """Jev's full reply for a clip, question by question, for the reviewer to read."""
+    raw = c.get("jev") or {}
+    rows = []
+    for q, spec in providers.JEV_QUESTIONS.items():
+        a = raw.get(q)
+        if not a:
+            continue
+        row = {"label": QUESTION_LABELS.get(q, q), "asked": spec["instructions"], "confidence": a.get("confidence"),
+               "options": []}
+        if spec["type"] == "score":
+            row["answer"] = f"{float(a['score']):.2f} of {len(spec['criteria']) - 1}"
+            legend = a.get("legend") or {str(i): t for i, t in enumerate(spec["criteria"])}
+            row["options"] = [(f"{k} · {legend.get(k, '')}", p) for k, p in (a.get("probabilities") or {}).items()]
+        elif spec["type"] == "noul":
+            row["answer"] = f"{float(a['noul']) * 100:.0f}% yes"
+            row["options"] = [("yes · " + spec["criteria"]["true"], float(a["noul"])),
+                              ("no · " + spec["criteria"]["false"], 1 - float(a["noul"]))]
+        else:
+            row["answer"] = CATEGORIES.get(a.get("choice"), a.get("choice"))
+            row["options"] = [(CATEGORIES.get(k, k), p) for k, p in (a.get("probabilities") or {}).items()]
+        row["options"] = sorted(((t, float(p)) for t, p in row["options"]), key=lambda x: -x[1])
+        rows.append(row)
+    return rows
+
+
+templates.env.globals.update(explain=explain, left_out=left_out, jev_answers=jev_answers)
 
 
 def page(request, name, status_code=200, **ctx):
@@ -318,6 +362,7 @@ def _job_page(request, job_id, error=None, status_code=200):
     est = pipeline.estimate(job_id) if job["stage"] == "authorize" and job["status"] == "waiting" else None
     return page(request, "job.html", status_code, job=job, short=short, other=other, reviews=reviews,
                 spent=ledger.spent(job_id), est=est, error=error, stt_model=config.STT_MODEL,
+                translate_model=config.TRANSLATE_MODEL,
                 stuck=[c for c in calls if c["state"] == "indeterminate" or (c["state"] == "sent" and not _live(c))],
                 inflight=[c for c in calls if c["state"] == "sent" and _live(c)],
                 approved=sum(r["status"] == "approved" for r in reviews.values()))
@@ -354,6 +399,16 @@ def retry_call(job_id: str, call_id: int):
     ledger.resolve(call_id)
     if not any(c["state"] == "indeterminate" or (c["state"] == "sent" and not _live(c)) for c in ledger.calls(job_id)):
         pipeline.resume(job_id)
+    return RedirectResponse(f"/jobs/{job_id}", 303)
+
+
+@app.post("/jobs/{job_id}/redo")
+def redo(request: Request, job_id: str):
+    _job_or_404(job_id)
+    try:
+        pipeline.redo(job_id)
+    except ValueError as e:
+        return _job_page(request, job_id, str(e), 409)
     return RedirectResponse(f"/jobs/{job_id}", 303)
 
 
@@ -502,6 +557,20 @@ def reset_captions(job_id: str, cid: int):
     caps = cand.caption_lines(units, idx[0], idx[-1], rv["start"], rv["end"]) if idx else []
     _save(rv, {"captions": caps})
     return {"captions": caps, **_state(db.review(cid))}
+
+
+@app.get("/jobs/{job_id}/clips/{cid}/frame.jpg")
+def clip_frame(job_id: str, cid: int):
+    """A small still from a few seconds into the clip, for the contact sheet (made once, then cached)."""
+    _job_or_404(job_id)
+    c = _clip_or_404(job_id, cid)
+    out = pipeline.job_dir(job_id) / "frames" / f"{cid}-{c['start']:.1f}.jpg"
+    if not out.exists():
+        try:
+            media.thumbnail(pipeline.media_path(job_id), out, c["start"] + min(6.0, (c["end"] - c["start"]) / 3), width=480)
+        except RuntimeError:
+            raise HTTPException(404, "No frame")
+    return FileResponse(out, headers={"Cache-Control": "max-age=86400"})
 
 
 @app.get("/jobs/{job_id}/clips/{cid}/state")

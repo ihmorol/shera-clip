@@ -1,4 +1,5 @@
-"""Transcript units from VTT or Whisper (verbose_json) output. Text is kept exactly as spoken; never translated."""
+"""Transcript units from VTT or speech-to-text (verbose_json) output. `text` is kept exactly as spoken;
+an English translation, when made, sits beside it in `en`."""
 import html
 import re
 
@@ -47,7 +48,7 @@ def units_from_whisper(chunks):
     """chunks: [(offset_s, verbose_json)]. Returns (units with absolute times, flags)."""
     units, flags = [], []
     for n, (offset, data) in enumerate(chunks):
-        segs = [s for s in data.get("segments") or [] if s.get("text", "").strip()]
+        segs = _lines(data.get("words")) or [s for s in data.get("segments") or [] if s.get("text", "").strip()]
         for i, s in enumerate(segs):
             u = {"start": offset + s["start"], "end": offset + s["end"], "text": s["text"].strip(), "speaker": None}
             if n and i == 0 and units:
@@ -57,6 +58,29 @@ def units_from_whisper(chunks):
                     continue
             units.append(u)
     return units, flags
+
+
+END = re.compile(r"[.?!।]['\")\]]*$")
+
+
+def _lines(words, gap=0.8, longest=12.0):
+    """Sentence-sized lines from word timestamps: a line ends at sentence punctuation, a pause, or ~12 s.
+    Providers such as MAI-Transcribe split segments only by language, which is too coarse for clips."""
+    out, cur = [], []
+    for w in words or []:
+        text = str(w.get("word") or w.get("text") or "").strip()
+        if not text or w.get("start") is None or w.get("end") is None:
+            continue
+        if cur and (w["start"] - cur[-1]["end"] > gap or cur[-1]["end"] - cur[0]["start"] > longest):
+            out.append(cur)
+            cur = []
+        cur.append({"start": float(w["start"]), "end": float(w["end"]), "text": text})
+        if END.search(text):
+            out.append(cur)
+            cur = []
+    if cur:
+        out.append(cur)
+    return [{"start": c[0]["start"], "end": c[-1]["end"], "text": " ".join(x["text"] for x in c)} for c in out]
 
 
 def _clock(t):

@@ -15,11 +15,11 @@
     </div>
     <video id="source" src="{{ source_url }}" controls preload="metadata"></video>
     <p class="tools"><button type="button" id="play-span"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Play this clip</button>
-      <span class="muted">Click a line below to hear it. Highlighted lines are inside the clip.</span></p>
+      <span class="muted">Click a line to hear it. Highlighted lines are inside the clip; the English under a line is its translation.</span></p>
     <ol class="transcript" id="transcript" aria-label="Transcript around this clip">
       {% for u in near %}
       <li><button type="button" class="unit" data-start="{{ u.start }}" data-end="{{ u.end }}">
-        <span class="t num mono">{{ u.start|t }}</span><span>{% if u.speaker %}<span class="muted">{{ u.speaker }}:</span> {% endif %}{{ u.text }}</span></button></li>
+        <span class="t num mono">{{ u.start|t }}</span><span>{% if u.speaker %}<span class="muted">{{ u.speaker }}:</span> {% endif %}{{ u.text }}{% if u.en and u.en != u.text %}<span class="en">{{ u.en }}</span>{% endif %}</span></button></li>
       {% endfor %}
     </ol>
   </section>
@@ -151,14 +151,29 @@
       <p><strong>{{ about.what or 'What it teaches' }}</strong>{% if about.summary %}<br><span class="muted">{{ about.summary }}</span>{% endif %}
         <span class="src">AI draft</span></p>
       {% endif %}
-      <p>Opens with: <q>{{ about.opens }}</q></p>
+      <p>Opens with: <q>{{ about.opens }}</q>{% if about.opens_en %}<span class="en">{{ about.opens_en }}</span>{% endif %}</p>
       {% if about.reasons %}
       <h4>Why the AI picked it</h4>
       <p class="muted">{% if c.rank %}Ranked {{ c.rank }} of {{ n_short }} suggestions.{% else %}{{ not_chosen }}.{% endif %}
         {{ about.category }}</p>
       <ul class="reasons">
-        {% for r in about.reasons %}<li><span class="num mono">{{ '%.1f'|format(r.score) }}/4</span> <strong>{{ r.label }}:</strong> {{ r.text }}</li>{% endfor %}
+        {% for r in about.reasons %}<li><span class="num mono">{{ r.score }}</span> <strong>{{ r.label }}:</strong> {{ r.text }}</li>{% endfor %}
       </ul>
+      {% set answers = jev_answers(c) %}
+      {% if answers %}
+      <details class="jev">
+        <summary>Jev’s full answer <span class="muted">({{ answers|length }} questions)</span></summary>
+        {% for q in answers %}
+        <div class="jev-q">
+          <p class="jev-head"><strong>{{ q.label }}</strong> <span class="jev-ans">{{ q.answer }}</span>{% if q.confidence is not none %} <span class="muted num">· confidence {{ '%.0f'|format(q.confidence * 100) }}%</span>{% endif %}</p>
+          <p class="jev-asked muted">{{ q.asked|replace('`excerpt`', 'this clip') }}</p>
+          <ul class="bars">
+            {% for label, p in q.options[:5] if p >= 0.01 %}<li><span class="bar" style="--p:{{ '%.3f'|format(p) }}"></span><span class="num mono">{{ '%.0f'|format(p * 100) }}%</span> {{ label }}</li>{% endfor %}
+          </ul>
+        </div>
+        {% endfor %}
+      </details>
+      {% endif %}
       {% else %}<p class="muted">This moment was not scored, so there is no AI reason for it.</p>{% endif %}
       <h4>Check before approving</h4>
       <ol class="checks">

@@ -6,7 +6,7 @@ import time
 from shera import config
 
 LOCK = threading.RLock()  # ponytail: one shared connection + global lock; fine for a single-operator local app
-JSON_COLS = {"flags", "tags", "captions", "layout", "drafts", "posted", "result"}
+JSON_COLS = {"flags", "tags", "captions", "layout", "drafts", "posted", "result", "jev"}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs(
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS jobs(
 CREATE TABLE IF NOT EXISTS candidates(
   id INTEGER PRIMARY KEY, job_id TEXT, u0 INTEGER, u1 INTEGER, start REAL, "end" REAL,
   text TEXT, value INTEGER, clarity INTEGER, opening INTEGER, category TEXT, score REAL,
-  shortlisted INTEGER, rank INTEGER);
+  shortlisted INTEGER, rank INTEGER, text_en TEXT, teacher REAL, complete REAL, jev TEXT);
 CREATE INDEX IF NOT EXISTS candidates_job ON candidates(job_id);
 CREATE TABLE IF NOT EXISTS reviews(
   candidate_id INTEGER PRIMARY KEY, status TEXT, start REAL, "end" REAL, category TEXT,
@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS paid_calls(
 CREATE UNIQUE INDEX IF NOT EXISTS paid_calls_key ON paid_calls(job_id, key) WHERE state != 'abandoned';
 """
 
+ADDED = (("jobs", "audio_path", "TEXT"), ("jobs", "audio_offset", "REAL"), ("candidates", "text_en", "TEXT"),
+         ("candidates", "teacher", "REAL"), ("candidates", "complete", "REAL"), ("candidates", "jev", "TEXT"))
 _conn = None
 _path = None
 
@@ -43,10 +45,9 @@ def connect():
             _conn.row_factory = sqlite3.Row
             _conn.execute("PRAGMA journal_mode=WAL")
             _conn.executescript(SCHEMA)
-            have = {r[1] for r in _conn.execute("PRAGMA table_info(jobs)")}
-            for col, kind in (("audio_path", "TEXT"), ("audio_offset", "REAL")):  # databases made before these columns
-                if col not in have:
-                    _conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {kind}")
+            for table, col, kind in ADDED:  # databases made before these columns existed
+                if col not in {r[1] for r in _conn.execute(f"PRAGMA table_info({table})")}:
+                    _conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
             _path = config.DB_PATH
         return _conn
 

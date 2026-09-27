@@ -21,7 +21,9 @@ def keys(monkeypatch):
 
 def jev_answer(**over):
     a = {"value": {"score": 3.4}, "clarity": {"score": 2}, "opening": {"score": 1},
-         "category": {"choice": "exam_tip"}}
+         "postable": {"score": 3.1}, "teacher": {"type": "noul", "noul": 0.93}, "complete": {"type": "noul", "noul": 0.7},
+         "takeaway": {"noul": 0.8}, "offtopic": {"noul": 0.05}, "private": {"noul": 0.01},
+         "skill": {"choice": "writing"}, "category": {"choice": "exam_tip", "confidence": 0.8}}
     a.update(over)
     return {"answers": a, "usage": {"cost": 0.0012}}
 
@@ -29,12 +31,17 @@ def jev_answer(**over):
 def test_jev_parses_scores_category_and_cost(monkeypatch):
     post = fake_post(jev_answer())
     monkeypatch.setattr(httpx, "post", post)
-    out, cost = providers.jev_score("Task 2 tip")
-    assert out == {"value": 3.4, "clarity": 2.0, "opening": 1.0, "category": "exam_tip"}
-    assert cost == 0.0012
+    out, cost = providers.jev_score("Task 2 tip", "Task 2 টিপ")
+    raw = out.pop("raw")
+    assert out == {"value": 3.4, "clarity": 2.0, "opening": 1.0, "postable": 3.1, "teacher": 0.93, "complete": 0.7,
+                   "takeaway": 0.8, "offtopic": 0.05, "private": 0.01, "category": "exam_tip", "skill": "writing"}
+    assert raw["category"]["confidence"] == 0.8 and cost == 0.0012  # Jev's full answer is kept for the reviewer
     body = post.sent["json"]
-    assert body["model"] == "typesafe/jev-1.13" and body["state"] == {"excerpt": "Task 2 tip"}
-    assert set(body["questions"]) == {"value", "clarity", "opening", "category"}
+    assert body["model"] == "typesafe/jev-1.13" and body["state"] == {"excerpt": "Task 2 tip", "original": "Task 2 টিপ"}
+    assert set(body["questions"]) == {"value", "clarity", "opening", "postable", "teacher", "complete", "takeaway",
+                                      "offtopic", "private", "skill", "category"}
+    providers.jev_score("same", "same")
+    assert post.sent["json"]["state"] == {"excerpt": "same"}  # English as spoken: no duplicate
 
 
 def test_jev_bad_shape_is_billed_error(monkeypatch):
@@ -75,5 +82,20 @@ def test_transcribe_uses_openrouter_and_falls_back_on_400(monkeypatch, tmp_path)
     monkeypatch.setattr(httpx, "post", post)
     data, cost = providers.transcribe(audio)
     assert [s[0] for s in seen] == [providers.STT_URL] * 2 and "openrouter.ai" in providers.STT_URL
-    assert [s[1] for s in seen] == [config.STT_MODEL, "openai/whisper-1"]
-    assert seen[0][2] == "Bearer k-test" and data["model"] == "openai/whisper-1" and cost == 0.004
+    assert [s[1] for s in seen] == [config.STT_MODEL, config.STT_FALLBACK_MODEL]
+    assert seen[0][2] == "Bearer k-test" and data["model"] == config.STT_FALLBACK_MODEL and cost == 0.004
+    assert config.STT_MODEL == "microsoft/mai-transcribe-2"  # D25: lists Bengali and follows code switching
+
+
+def test_translate_is_one_line_per_line(monkeypatch):
+    def reply(en):
+        return fake_post({"choices": [{"message": {"content": json.dumps({"en": en})}}], "usage": {"cost": 0.0002}})
+    post = reply(["Today we will talk about Task 2.", " Paraphrase. "])
+    monkeypatch.setattr(httpx, "post", post)
+    out, cost = providers.translate(["আজকে আমরা Task 2 নিয়ে কথা বলব।", "Paraphrase."])
+    assert out == {"en": ["Today we will talk about Task 2.", "Paraphrase."]} and cost == 0.0002
+    assert post.sent["json"]["model"] == config.TRANSLATE_MODEL
+    monkeypatch.setattr(httpx, "post", reply(["only one"]))
+    with pytest.raises(ProviderError) as e:  # a merged or dropped line would shift every timestamp
+        providers.translate(["a", "b"])
+    assert e.value.billed

@@ -110,7 +110,7 @@ def test_empty_shortlist_state(client):
     job_id, cid = make_job()
     db.x("UPDATE candidates SET shortlisted=0, rank=NULL")
     html = client.get(f"/jobs/{job_id}").text
-    assert "No strong moments in this class" in html and "Other moments (1)" in html
+    assert "No postable moments in this class" in html and "Other moments (1)" in html
 
 
 def test_review_save_round_trip_persists(client):

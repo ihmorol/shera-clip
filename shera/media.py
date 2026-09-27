@@ -168,7 +168,7 @@ def mux_audio(video, audio, offset, out):
     return Path(out)
 
 
-def audio_chunks(path, out_dir, speech, chunk_s=600):
+def audio_chunks(path, out_dir, speech, chunk_s=300):
     """Mono 16 kHz 32 kbps mp3 chunks cut in the middle of the silence gap nearest each
     multiple of chunk_s. -> [(path, offset_s)]"""
     dur = probe(path)["duration"]
@@ -331,10 +331,10 @@ def render(src, start, end, layout, captions, title, out, preset="veryfast", lan
     return out
 
 
-def thumbnail(video, out_jpg, at_s):
+def thumbnail(video, out_jpg, at_s, width=None):
     Path(out_jpg).parent.mkdir(parents=True, exist_ok=True)
     _run(["ffmpeg", "-y", "-v", "error", "-ss", f"{max(0.0, at_s):.3f}", "-i", video,
-          "-frames:v", "1", "-q:v", "3", out_jpg])
+          *(["-vf", f"scale={width}:-2"] if width else []), "-frames:v", "1", "-q:v", "3", out_jpg])
     return Path(out_jpg)
 
 
