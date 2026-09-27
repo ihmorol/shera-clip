@@ -9,7 +9,10 @@ import os
 import re
 import subprocess
 import tempfile
+from datetime import datetime
 from pathlib import Path
+
+import numpy as np
 
 W, H, FPS = 1080, 1920, 30
 TITLE_H = 200            # top band reserved for the title in crop mode
@@ -53,6 +56,7 @@ def probe(path):
         "has_audio": bool(a),
         # extras used by verify(): stream durations, to check end offsets (A5)
         "v_duration": _f(v.get("duration")), "a_duration": _f(a.get("duration")),
+        "created": (fmt.get("tags") or {}).get("creation_time"),
     }
 
 
@@ -90,12 +94,78 @@ def speech_intervals(path):
         silences.append((s, dur))
     speech, cur = [], 0.0
     for a, b in silences:
-        if a > cur:
+        if a - cur > 0.05:  # a few ms between silences is a timestamp edge, not speech
             speech.append((round(cur, 3), round(a, 3)))
         cur = max(cur, b)
-    if cur < dur:
+    if dur - cur > 0.05:
         speech.append((round(cur, 3), round(dur, 3)))
     return speech
+
+
+def _clock(created):
+    try:
+        return datetime.fromisoformat(created.replace("Z", "+00:00"))
+    except (AttributeError, ValueError):
+        return None
+
+
+def _envelope(path, start, dur):
+    """10 ms loudness envelope of the first audio stream over [start, start + dur)."""
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{max(0.0, start):.3f}", "-t", f"{dur:.3f}", "-i", str(path),
+                          "-map", "0:a:0", "-ac", "1", "-ar", "4000", "-f", "s16le", "-"], capture_output=True).stdout
+    x = np.frombuffer(raw, np.int16).astype(np.float64)
+    n = len(x) // 40
+    return np.sqrt((x[:n * 40].reshape(n, 40) ** 2).mean(axis=1))
+
+
+def _match(video, audio, guess, vdur, search):
+    """Refine `guess` by cross-correlating loudness envelopes; None when the video is silent or no clear match."""
+    w0 = min(60.0, vdur / 4)
+    w = min(240.0, vdur - w0)
+    v = _envelope(video, w0, w)
+    if len(v) < 500 or v.max() < 30:  # under ~-60 dBFS: nothing to match against
+        return None
+    a0 = max(0.0, w0 + guess - search)
+    a = _envelope(audio, a0, w + 2 * search)
+    n = len(v)
+    if len(a) <= n:
+        return None
+    v = (v - v.mean()) / (v.std() or 1)
+    size = len(a) + n
+    c = np.fft.irfft(np.fft.rfft(a, size) * np.conj(np.fft.rfft(v, size)), size)[:len(a) - n + 1]
+    s1, s2 = np.cumsum(np.r_[0, a]), np.cumsum(np.r_[0, a * a])
+    mean = (s1[n:] - s1[:-n]) / n
+    std = np.sqrt(np.maximum((s2[n:] - s2[:-n]) / n - mean * mean, 1e-9))
+    r = c / (n * std)
+    k = int(r.argmax())
+    return round(a0 + k * 0.01 - w0, 3) if r[k] >= 0.5 else None
+
+
+def sync_offset(video, audio):
+    """Seconds to add to a video time to reach the same moment in a separate recording of the class audio
+    (a Zoom M4A beside an OBS video). -> (offset, how): matched by sound when the video has audio,
+    else by the files' recording clocks (about 1 s), else assumed to start together."""
+    pv, pa = probe(video), probe(audio)
+    cv, ca = _clock(pv["created"]), _clock(pa["created"])
+    guess = (cv - ca).total_seconds() if cv and ca else None
+    if guess is not None and not -pv["duration"] < guess < pa["duration"]:
+        guess = None  # clocks that put the two files apart are wrong, not informative
+    found = _match(video, audio, guess or 0.0, pv["duration"], 20.0 if guess is not None else 300.0) if pv["has_audio"] else None
+    if found is not None:
+        return found, "sound"
+    return (guess, "clock") if guess is not None else (0.0, "none")
+
+
+def mux_audio(video, audio, offset, out):
+    """Video stream from `video` with `audio` lined up by `offset`, both stream-copied: the audio samples are
+    the original recording's, never re-encoded."""
+    dur = probe(video)["duration"]
+    a_in = ["-ss", f"{offset:.3f}", "-i", audio] if offset >= 0 else ["-itsoffset", f"{-offset:.3f}", "-i", audio]
+    part = Path(out).with_name(Path(out).name + ".part")
+    _run(["ffmpeg", "-y", "-v", "error", "-i", video, *a_in, "-map", "0:v:0", "-map", "1:a:0", "-c", "copy",
+          "-t", f"{dur:.3f}", "-movflags", "+faststart", "-f", "mp4", part])
+    os.replace(part, out)
+    return Path(out)
 
 
 def audio_chunks(path, out_dir, speech, chunk_s=600):

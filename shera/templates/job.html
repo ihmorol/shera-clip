@@ -89,18 +89,20 @@
 <section class="panel" aria-labelledby="short-h">
   <h2 id="short-h">Suggested clips</h2>
   {% if short %}
+  <p class="muted">Each line says what the clip is and why the AI picked it, in the words of the rubric it was scored on. Open a clip to watch and decide.</p>
   <table class="clips">
-    <thead><tr><th scope="col" class="num">#</th><th scope="col">Where in the class</th><th scope="col" class="num">Length</th>
-      <th scope="col" class="num" title="Each scored 0–4">Value · Clarity · Hook</th>
-      <th scope="col">Category</th><th scope="col">Your decision</th><th scope="col"><span class="sr">Open</span></th></tr></thead>
+    <thead><tr><th scope="col" class="num">#</th><th scope="col">Clip</th><th scope="col">Where in the class</th><th scope="col" class="num">Length</th>
+      <th scope="col">Your decision</th><th scope="col"><span class="sr">Open</span></th></tr></thead>
     <tbody>
-    {% for c in short %}{% set r = reviews.get(c.id) %}{% set st = r.status if r else 'pending' %}
+    {% for c in short %}{% set r = reviews.get(c.id) %}{% set st = r.status if r else 'pending' %}{% set x = explain(c, r.drafts if r else none) %}
     <tr class="r-{{ st }}">
       <td class="num rank">{{ c.rank }}</td>
-      <td class="mono">{{ c.start|t }} – {{ c.end|t }}</td>
+      <td class="about-cell">
+        <span class="what">{% if x.what %}{{ x.what }}{% else %}“{{ x.opens }}”{% endif %}</span>
+        <span class="why" title="Value {{ c.value }} · clarity {{ c.clarity }} · opening {{ c.opening }} (each 0–4)">{{ x.why }}</span>
+      </td>
+      <td class="mono nowrap">{{ c.start|t }} – {{ c.end|t }}</td>
       <td class="num">{{ '%.0f'|format(c.end - c.start) }} s</td>
-      <td class="num">{{ '%.1f · %.1f · %.1f'|format(c.value, c.clarity, c.opening) }}</td>
-      <td>{{ CATEGORIES.get((r or c).category, (r or c).category) }}</td>
       <td><span class="badge r-{{ st }}">{{ STATUS_LABELS.get(st, st) }}</span></td>
       <td><a class="button small" href="/jobs/{{ job.id }}/clips/{{ c.id }}">Open</a></td>
     </tr>
@@ -111,14 +113,13 @@
 
   {% if other %}
   <details>
-    <summary>Other moments ({{ other|length }}) <span class="muted">— lower scores or overlapping; open one if you know it is good</span></summary>
-    <table>
-      <thead><tr><th scope="col">Where in the class</th><th scope="col" class="num">Value · Clarity · Hook</th><th scope="col">Category</th><th scope="col"><span class="sr">Open</span></th></tr></thead>
+    <summary>Other moments ({{ other|length }}) <span class="muted">— not suggested; each says why. Open one if you know it is good.</span></summary>
+    <table class="clips">
+      <thead><tr><th scope="col">Moment</th><th scope="col">Where in the class</th><th scope="col"><span class="sr">Open</span></th></tr></thead>
       <tbody>
-      {% for c in other %}
-      <tr><td class="mono">{{ c.start|t }} – {{ c.end|t }}</td>
-        <td class="num">{% if c.score is not none %}{{ '%.1f · %.1f · %.1f'|format(c.value, c.clarity, c.opening) }}{% else %}<span class="muted">not scored</span>{% endif %}</td>
-        <td>{{ CATEGORIES.get(c.category, c.category or '–') }}</td>
+      {% for c in other %}{% set x = explain(c) %}
+      <tr><td class="about-cell"><span class="what">“{{ x.opens }}”</span><span class="why">{{ left_out(c, short) }}{% if x.why %} · {{ x.why }}{% endif %}</span></td>
+        <td class="mono nowrap">{{ c.start|t }} – {{ c.end|t }}</td>
         <td><a class="button small" href="/jobs/{{ job.id }}/clips/{{ c.id }}">Open</a></td></tr>
       {% endfor %}
       </tbody>

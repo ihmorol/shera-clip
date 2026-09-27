@@ -1,6 +1,7 @@
 """Local web UI: server-rendered pages over the pipeline. Binds to loopback only."""
 import json
 import os
+import re
 import shutil
 import string
 import threading
@@ -13,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from shera import candidates as cand
-from shera import config, db, ledger, pipeline
+from shera import config, db, ledger, pipeline, providers
 
 HERE = Path(__file__).parent
 STAGES = ("import", "transcript", "authorize", "transcribe", "candidates", "score", "prepare", "review")
@@ -133,6 +134,58 @@ templates.env.globals.update(CATEGORIES=CATEGORIES, CAP=config.CAP_USD, STAGES=S
                              STAGE_LABELS=STAGE_LABELS, STATUS_LABELS=STATUS_LABELS)
 
 
+# ---------- plain-words reasons, from the same rubric Jev scored against ----------
+
+SHORT = {"value": ("no teaching value", "little teaching value", "some teaching value", "a clear teaching point",
+                   "a strong teaching point"),
+         "clarity": ("needs missing context", "leans on earlier context", "some unclear references",
+                     "mostly stands alone", "fully stands alone"),
+         "opening": ("starts mid-thought", "weak start", "plain start", "good start", "strong hook")}
+LABELS = {"value": "Teaching value", "clarity": "Stands alone", "opening": "Opening"}
+SENTENCE = re.compile(r"(.+?[.?!।])(\s|$)")
+
+
+def _level(v):
+    return min(4, max(0, int(float(v) + 0.5)))
+
+
+def opening_line(text, limit=110):
+    """The clip's first sentence, as spoken."""
+    m = SENTENCE.match(text.strip())
+    first = (m.group(1) if m else text).strip()
+    return first if len(first) <= limit else first[:limit - 1].rsplit(" ", 1)[0] + "…"
+
+
+def explain(c, drafts=None):
+    """Why a candidate was suggested, in the scorer's own terms, plus what it teaches."""
+    d = drafts if drafts and "error" not in drafts else {}
+    post = d.get("youtube") or d.get("facebook") or {}
+    out = {"what": post.get("title") or "", "summary": post.get("description") or "",
+           "opens": opening_line(c["text"] or ""), "why": "", "reasons": []}
+    if c["score"] is None:
+        return out
+    cat = c["category"] or "other"
+    out["why"] = " · ".join([CATEGORIES.get(cat, cat)] + [SHORT[q][_level(c[q])] for q in ("value", "clarity", "opening")])
+    out["reasons"] = [{"label": LABELS[q], "score": c[q], "text": providers.JEV_QUESTIONS[q]["criteria"][_level(c[q])]}
+                      for q in ("value", "clarity", "opening")]
+    out["category"] = f"{CATEGORIES.get(cat, cat)}: {providers.CATEGORIES.get(cat, '')}"
+    return out
+
+
+def left_out(c, short):
+    """Why a scored candidate is not on the shortlist (mirrors candidates.shortlist)."""
+    if c["score"] is None:
+        return "Not scored"
+    low = [SHORT[q][_level(c[q])] for q in ("value", "clarity") if (c[q] or 0) < 2]
+    if low:
+        return "Left out: " + " and ".join(low)
+    over = next((k for k in short if min(c["end"], k["end"]) - max(c["start"], k["start"]) > 0), None)
+    return f"Left out: overlaps clip {over['rank']}, which scored higher" if over else "Left out: ranked below the top 10"
+
+
+templates.env.globals.update(explain=explain, left_out=left_out)
+
+
 def page(request, name, status_code=200, **ctx):
     return templates.TemplateResponse(request, name, ctx, status_code=status_code)
 
@@ -144,8 +197,9 @@ def _home(request, error=None, form=None, status_code=200):
     if config.INBOX.is_dir():
         for f in sorted(config.INBOX.iterdir()):
             if f.is_file() and f.suffix.lower() == ".mp4":
-                vtt = f.with_suffix(".vtt")
-                inbox.append({"path": f, "size": f.stat().st_size, "vtt": vtt if vtt.exists() else None})
+                vtt, m4a = f.with_suffix(".vtt"), f.with_suffix(".m4a")
+                inbox.append({"path": f, "size": f.stat().st_size, "vtt": vtt if vtt.exists() else None,
+                              "m4a": m4a if m4a.exists() else None})
     jobs = [{**j, "spent": ledger.spent(j["id"]),
              "disk": _dir_bytes(pipeline.job_dir(j["id"])) + _dir_bytes(config.DATA / "exports" / j["id"])}
             for j in db.list_jobs()]
@@ -178,8 +232,9 @@ def _drive_roots():
     else:
         roots.append({"name": "/", "path": "/"})
     seen = {r["path"] for r in roots}
-    for label, p in (("Inbox", config.INBOX), ("Home", Path.home()),
-                     ("Desktop", Path.home() / "Desktop"), ("Downloads", Path.home() / "Downloads")):
+    home = Path.home()
+    for label, p in (("Inbox", config.INBOX), ("Videos", home / "Videos"), ("Zoom recordings", home / "Documents" / "Zoom"),
+                     ("Desktop", home / "Desktop"), ("Downloads", home / "Downloads"), ("Home", home)):
         try:
             if str(p) not in seen and p.is_dir():
                 seen.add(str(p))
@@ -189,7 +244,10 @@ def _drive_roots():
     return roots
 
 
-def _enumerate(path):
+PICKABLE = (".mp4", ".m4a", ".vtt")
+
+
+def _enumerate(path, ext):
     dirs, files = [], []
     with os.scandir(path) as it:
         for e in it:
@@ -197,7 +255,7 @@ def _enumerate(path):
                 continue
             if e.is_dir():
                 dirs.append({"name": e.name, "path": e.path})
-            elif e.is_file() and e.name.lower().endswith(".mp4"):
+            elif e.is_file() and e.name.lower().endswith(ext):
                 files.append({"name": e.name, "path": e.path})
     dirs.sort(key=lambda d: d["name"].casefold())
     files.sort(key=lambda f: f["name"].casefold())
@@ -205,8 +263,10 @@ def _enumerate(path):
 
 
 @app.get("/browse")
-def browse(path: str = ""):
-    """Read-only folder listing for the import chooser: folders to open, plus the .mp4 files to pick."""
+def browse(path: str = "", ext: str = ".mp4"):
+    """Read-only folder listing for the import chooser: folders to open, plus the files of one type to pick."""
+    if ext not in PICKABLE:
+        raise HTTPException(422, f"ext must be one of {', '.join(PICKABLE)}")
     path = path.strip().strip('"')
     if not path:
         return {"path": "", "parent": None, "dirs": _drive_roots(), "files": []}
@@ -214,7 +274,7 @@ def browse(path: str = ""):
     if not p.is_dir():
         raise HTTPException(404, "That folder does not exist or cannot be read")
     try:
-        dirs, files = _enumerate(p)
+        dirs, files = _enumerate(p, ext)
     except OSError as e:
         raise HTTPException(403, f"Cannot read that folder: {e.strerror or e}")
     parent = str(p.parent)
@@ -222,8 +282,8 @@ def browse(path: str = ""):
 
 
 @app.post("/import")
-def import_(request: Request, mp4: str = Form(""), vtt: str = Form("")):
-    form = {"mp4": mp4, "vtt": vtt}
+def import_(request: Request, mp4: str = Form(""), vtt: str = Form(""), m4a: str = Form("")):
+    form = {"mp4": mp4, "vtt": vtt, "m4a": m4a}
     if not mp4.strip():
         return _home(request, "Enter the path to the class MP4.", form, 400)
     src, err = _check_file(mp4, ".mp4", "Recording")
@@ -231,9 +291,12 @@ def import_(request: Request, mp4: str = Form(""), vtt: str = Form("")):
         vtt_path, err = _check_file(vtt, ".vtt", "Transcript")
     else:
         vtt_path = None
+    m4a_path = None
+    if not err and m4a.strip():
+        m4a_path, err = _check_file(m4a, ".m4a", "Zoom audio")
     if err:
         return _home(request, err, form, 400)
-    job_id = pipeline.start_job(src, vtt_path)
+    job_id = pipeline.start_job(src, vtt_path, m4a_path)
     return RedirectResponse(f"/jobs/{job_id}", 303)
 
 
@@ -332,7 +395,8 @@ def review_page(request: Request, job_id: str, cid: int):
     order = [x["id"] for x in short + other]
     i = order.index(cid)
     return page(request, "review.html", job=job, c=c, rv=rv, near=near, state=_state(rv), drafting=_drafting(job),
-                source_url=f"/media/jobs/{job_id}/source.mp4",
+                about=explain(c, rv["drafts"]), n_short=len(short), not_chosen=None if c["shortlisted"] else left_out(c, short),
+                source_url=_media_url(pipeline.media_path(job_id)),
                 prev=order[i - 1] if i > 0 else None, next=order[i + 1] if i + 1 < len(order) else None,
                 bounds={"starts": [u["start"] for u in units], "ends": [u["end"] for u in units]})
 

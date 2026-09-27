@@ -20,13 +20,21 @@
   <h2 id="import-h">Import a class</h2>
   {% if error %}<p class="alert fail" role="alert">{{ error }}</p>{% endif %}
   <form method="post" action="/import" class="import-form">
-    <label for="mp4">Class recording <span class="muted">(.mp4)</span></label>
+    <label for="mp4">Class video <span class="muted">(.mp4)</span></label>
     <div class="pick">
       <input id="mp4" name="mp4" value="{{ form.mp4 or '' }}" placeholder="Choose a file, or paste its full path" autocomplete="off" spellcheck="false">
-      <button type="button" id="mp4-choose"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg>Choose…</button>
+      <button type="button" data-choose="mp4" data-ext=".mp4"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg>Choose…</button>
+    </div>
+    <label for="m4a">Zoom audio <span class="muted">(.m4a, recommended — the class's real sound; it replaces the video's own audio and is lined up automatically)</span></label>
+    <div class="pick">
+      <input id="m4a" name="m4a" value="{{ form.m4a or '' }}" placeholder="Choose the audio file Zoom saved for this class" autocomplete="off" spellcheck="false">
+      <button type="button" data-choose="m4a" data-ext=".m4a"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg>Choose…</button>
     </div>
     <label for="vtt">Zoom transcript <span class="muted">(.vtt, optional — without it the audio is transcribed for a few cents)</span></label>
-    <input id="vtt" name="vtt" value="{{ form.vtt or '' }}" placeholder="Paste the .vtt path if you have one" autocomplete="off" spellcheck="false">
+    <div class="pick">
+      <input id="vtt" name="vtt" value="{{ form.vtt or '' }}" placeholder="Paste the .vtt path if you have one" autocomplete="off" spellcheck="false">
+      <button type="button" data-choose="vtt" data-ext=".vtt"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg>Choose…</button>
+    </div>
     <div><button type="submit" class="primary">Import class</button></div>
   </form>
 
@@ -37,10 +45,11 @@
     <li class="row">
       <svg class="i lead" aria-hidden="true"><use href="#i-film"/></svg>
       <span class="grow"><strong>{{ f.path.name }}</strong>
-        <span class="muted">· {{ f.size|bytes }} · {% if f.vtt %}with transcript{% else %}no transcript{% endif %}</span></span>
+        <span class="muted">· {{ f.size|bytes }} · {% if f.m4a %}with Zoom audio{% else %}no Zoom audio{% endif %} · {% if f.vtt %}with transcript{% else %}no transcript{% endif %}</span></span>
       <form method="post" action="/import">
         <input type="hidden" name="mp4" value="{{ f.path }}">
         <input type="hidden" name="vtt" value="{{ f.vtt or '' }}">
+        <input type="hidden" name="m4a" value="{{ f.m4a or '' }}">
         <button type="submit">Import</button></form>
     </li>
     {% endfor %}
@@ -49,10 +58,10 @@
 </section>
 
 <dialog id="chooser" class="chooser" aria-labelledby="chooser-h">
-  <h2 id="chooser-h">Choose a class recording</h2>
+  <h2 id="chooser-h">Choose a file</h2>
   <p id="chooser-path" class="mono muted"></p>
   <ul id="chooser-list" class="chooser-list"></ul>
-  <p id="chooser-empty" class="muted" hidden>No folders or MP4 files here.</p>
+  <p id="chooser-empty" class="muted" hidden>No folders or matching files here.</p>
   <p id="chooser-status" class="muted" hidden></p>
   <div class="chooser-actions">
     <button type="button" id="chooser-up" disabled><svg class="i" aria-hidden="true"><use href="#i-up"/></svg>Up one folder</button>

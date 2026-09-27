@@ -22,9 +22,6 @@
         <span class="t num mono">{{ u.start|t }}</span><span>{% if u.speaker %}<span class="muted">{{ u.speaker }}:</span> {% endif %}{{ u.text }}</span></button></li>
       {% endfor %}
     </ol>
-    {% if c.score is not none %}
-    <p class="scores num">Scores (0–4): value <strong>{{ c.value }}</strong> · clarity <strong>{{ c.clarity }}</strong> · hook <strong>{{ c.opening }}</strong></p>
-    {% endif %}
   </section>
 
   <details class="panel trim" open>
@@ -147,6 +144,30 @@
           </div>
         </div>
       </div>
+    </div>
+    <div class="about" tabindex="0" aria-labelledby="about-h">
+      <h3 id="about-h">About this clip</h3>
+      {% if about.what or about.summary %}
+      <p><strong>{{ about.what or 'What it teaches' }}</strong>{% if about.summary %}<br><span class="muted">{{ about.summary }}</span>{% endif %}
+        <span class="src">AI draft</span></p>
+      {% endif %}
+      <p>Opens with: <q>{{ about.opens }}</q></p>
+      {% if about.reasons %}
+      <h4>Why the AI picked it</h4>
+      <p class="muted">{% if c.rank %}Ranked {{ c.rank }} of {{ n_short }} suggestions.{% else %}{{ not_chosen }}.{% endif %}
+        {{ about.category }}</p>
+      <ul class="reasons">
+        {% for r in about.reasons %}<li><span class="num mono">{{ '%.1f'|format(r.score) }}/4</span> <strong>{{ r.label }}:</strong> {{ r.text }}</li>{% endfor %}
+      </ul>
+      {% else %}<p class="muted">This moment was not scored, so there is no AI reason for it.</p>{% endif %}
+      <h4>Check before approving</h4>
+      <ol class="checks">
+        <li>It starts and ends on a complete sentence. If not, use <em>− line / + line</em> in step 1.</li>
+        <li>Someone who never saw the class would understand it.</li>
+        <li>The slide text is readable in the portrait preview. If not, crop in step 3.</li>
+        <li>The captions match what is said, and the title says what the viewer learns (step 2).</li>
+        <li>The sound is clear and in sync with the picture.</li>
+      </ol>
     </div>
   </section>
 </aside>

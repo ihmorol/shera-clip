@@ -252,3 +252,47 @@ def test_check_audible_threshold():
     pipeline.check_audible([(0, 10)], 20)  # a short clip that is half speech is fine
     with pytest.raises(ValueError):
         pipeline.check_audible([(0, 4)], 2212)
+
+
+def test_zoom_audio_replaces_video_audio_everywhere(env, monkeypatch, tmp_path):
+    src, vtt, calls = env
+    zoom = tmp_path / "audio1803441616.m4a"
+    zoom.write_bytes(b"m4a")
+    video_only = {"duration": DUR, "width": 1920, "height": 1080, "vcodec": "h264", "acodec": None,
+                  "v_start": 0, "a_start": 0, "has_audio": False}
+    monkeypatch.setattr(media, "probe", lambda p: {**video_only, "has_audio": True, "acodec": "aac"} if str(p).endswith("m4a") else video_only)
+    monkeypatch.setattr(media, "sync_offset", lambda v, a: (1.25, "sound"))
+    muxed = []
+    monkeypatch.setattr(media, "mux_audio", lambda v, a, off, out: (muxed.append((a.name, off)), shutil.copyfile(v, out)))
+    heard = []
+    monkeypatch.setattr(media, "speech_intervals", lambda p: (heard.append(p.name), [(0.0, DUR)])[1])
+    jid = pipeline.start_job(src, vtt, zoom)  # a video with no audio track is fine when the Zoom audio comes with it
+    pipeline.authorize(jid)
+    job = db.get_job(jid)
+    assert job["status"] == "done", job["error"]
+    assert muxed == [("zoom.m4a", 1.25)] and job["audio_offset"] == 1.25
+    assert any(f.startswith("Zoom audio lined up by matching sound") for f in job["flags"])
+    assert heard == ["media.mp4"] and pipeline.media_path(jid).name == "media.mp4"
+    cid = next(c["id"] for c in db.candidates(jid) if c["rank"] == 1)
+    pipeline.render_preview(cid)
+    assert calls["render"][-1][0].name == "media.mp4"  # clips carry the Zoom sound
+
+
+def test_zoom_audio_from_another_class_is_refused(env, monkeypatch, tmp_path):
+    src, vtt, calls = env
+    zoom = tmp_path / "other.m4a"
+    zoom.write_bytes(b"m4a")
+    real = media.probe
+    monkeypatch.setattr(media, "probe", lambda p: {**real(p), "duration": 30.0} if str(p).endswith("m4a") else real(p))
+    monkeypatch.setattr(media, "sync_offset", lambda v, a: (0.0, "none"))
+    jid = pipeline.start_job(src, vtt, zoom)
+    job = db.get_job(jid)
+    assert job["status"] == "failed" and "covers only" in job["error"] and not ledger.calls(jid)
+
+
+def test_ai_draft_fills_an_empty_on_video_title(env):
+    src, vtt, calls = env
+    jid = pipeline.start_job(src, vtt)
+    pipeline.authorize(jid)
+    top = next(c for c in db.candidates(jid) if c["rank"] == 1)
+    assert db.review(top["id"])["title"] == "Task 2"
