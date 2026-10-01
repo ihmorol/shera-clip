@@ -237,7 +237,8 @@ def cmd_desktop(a):
         raise CmdError("The desktop window needs pywebview. Install it with: pip install -e .[desktop]")
     from shera import desktop
     desktop.check_webview2()
-    desktop.run_window()
+    how = desktop.run_window()
+    _out({"ok": True, "window": "closed", "server": how, "port": config.PORT})
     return 0
 
 

@@ -58,7 +58,7 @@ shera zoom list                          # cloud recordings, when the ZOOM_* val
 pip install -e .[desktop]
 ```
 
-Windows uses Microsoft's Edge WebView2 (preinstalled on Windows 11 and most updated Windows 10 systems); macOS and Linux use the platform webview. Closing the window stops the server it started, exactly like closing the terminal.
+Windows uses Microsoft's Edge WebView2 (preinstalled on Windows 11 and most updated Windows 10 systems); macOS and Linux use the platform webview. Closing the window stops the server it started, as closing the terminal does. If the port is already taken by another program, set `SHERA_PORT` in `.env` and try again.
 
 Run the tests with `pip install -e .[test]` and then `python -m pytest -q`. They generate their own synthetic media.
 
