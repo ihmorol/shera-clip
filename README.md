@@ -50,6 +50,16 @@ shera zoom list                          # cloud recordings, when the ZOOM_* val
 
 `shera --help` lists every command (`job`, `run`, `calls`, `resolve`, `delete`, `zoom import`, ...). Every valid command prints one JSON object; a failure — including a usage error — exits 1 with the error named in the JSON (`--help` prints plain text). The CLI has no approve/reject command: approval stays a human act in the review UI. Pass `--data` (or set `SHERA_DATA`) to point a run at a different data folder.
 
+## Desktop window (D30)
+
+`shera desktop` opens the same local app in a native window instead of a browser tab. It reuses a Shera Clip server already running on the port, or starts one; install the optional dependency first:
+
+```bash
+pip install -e .[desktop]
+```
+
+Windows uses Microsoft's Edge WebView2 (preinstalled on Windows 11 and most updated Windows 10 systems); macOS and Linux use the platform webview. Closing the window stops the server it started, exactly like closing the terminal.
+
 Run the tests with `pip install -e .[test]` and then `python -m pytest -q`. They generate their own synthetic media.
 
 See [contributing and maintenance](CONTRIBUTING.md) before changing product decisions.

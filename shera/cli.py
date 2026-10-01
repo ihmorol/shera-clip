@@ -227,6 +227,20 @@ class _Parser(argparse.ArgumentParser):
         raise SystemExit(1)
 
 
+def cmd_desktop(a):
+    """D30: the same loopback review UI in a native window. A desktop session is a long-lived
+    server with background runner threads, so it opts out of the CLI's inline-run mode."""
+    pipeline.inline = False
+    try:
+        import webview  # noqa: F401
+    except ImportError:
+        raise CmdError("The desktop window needs pywebview. Install it with: pip install -e .[desktop]")
+    from shera import desktop
+    desktop.check_webview2()
+    desktop.run_window()
+    return 0
+
+
 def build_parser():
     p = _Parser(prog="shera", description="Shera Clip CLI: the machine stages with JSON output. "
                                            "Clip approval stays in the review UI (D29).")
@@ -275,6 +289,9 @@ def build_parser():
     e.add_argument("job_id")
     e.add_argument("--force", action="store_true", help="export even when the job is marked running elsewhere")
     e.set_defaults(func=cmd_export)
+
+    dsk = sub.add_parser("desktop", help="open the review UI in a desktop window (needs the [desktop] extra)")
+    dsk.set_defaults(func=cmd_desktop)
 
     d = sub.add_parser("delete", help="delete a job, its media and its exports; --yes required")
     d.add_argument("job_id")
