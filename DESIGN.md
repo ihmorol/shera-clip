@@ -207,7 +207,7 @@ The app runs on the operator's laptop and uses system fonts only. The font stack
 A near-black stage under lavender-white ink. Screen-light violet is the only accent, and a small set of theatre signal colours (signal blue, grease-pencil yellow, safety red, run violet) carries state.
 
 ### Primary
-- **Screen-light Violet** (`mask`): primary buttons, the current step frame, focus outlines, text selection, caret, form accents, links (`mask-hi`), the reel mark in the header. `mask-hi` is the hover step and `mask-lo` the pressed step. Text on the mask is always `mask-ink`, pure white (5.1:1 on `mask`, 4.6:1 on the `mask-hi` hover).
+- **Screen-light Violet** (`mask`): primary buttons, the current step frame, focus outlines, text selection, caret, form accents, links (`mask-text`), the reel mark in the header. `mask-hi` is the hover step and `mask-lo` the pressed step; `mask-hi` is a fill, never ink — violet text uses `mask-text` (#8277f2, 5.0–5.4:1 on panel, well, and the in-clip wash). Text on the mask is always `mask-ink`, pure white (5.6:1 on `mask`, 4.6:1 on the `mask-hi` hover).
 
 ### Secondary (state signals)
 - **Signal Blue** (`leader`): approved and done. Used for the Approve button fill, approved badges, and completed step frames.
@@ -223,7 +223,7 @@ Each signal has a `-wash` (12–14% alpha) for badge and alert backgrounds, and 
 - **Bench Black** (`panel`): every panel and the chooser dialog.
 - **Raised Black** (`raised`, hover `raised-hover`): secondary buttons, the "Next" box, trim-step numerals, row hover.
 - **Splice Lines** (`line`, `line-hi`): 1px panel borders and dividers. `line-hi` is for control borders and table headers.
-- **Lavender-white** (`ink`), **Greyed Lavender** (`ink-2`), **Faded Indigo** (`ink-3`): primary text, secondary text, and tertiary labels, timestamps, and placeholders (about 5:1 on panel).
+- **Lavender-white** (`ink`), **Greyed Lavender** (`ink-2`), **Faded Indigo** (`ink-3`): primary text, secondary text, and tertiary labels, timestamps, and placeholders (4.6:1 on panel).
 - **Film Stock** (`film`, `film-frame`, `film-frame-done`): the near-black of the step strip, its frames, and empty preview frames.
 
 ### Named Rules
@@ -253,7 +253,7 @@ Each signal has a `-wash` (12–14% alpha) for badge and alert backgrounds, and 
 
 ## Layout
 
-The page is a single column limited to 1240px, with 1.5rem gutters (1rem below 640px). A sticky top bar in `well` holds the reel mark and breadcrumbs. Panels stack with 1.5rem between them. Rhythm is tight: 0.25 to 0.75rem inside controls and rows, 1 to 1.5rem between groups.
+The page is a single column limited to 1240px, with 1.5rem gutters (1rem below 640px). A sticky top bar holds the reel mark and breadcrumbs, blurring the page behind it (86% `well` tint). Panels stack with 1.5rem between them. Rhythm is tight: 0.25 to 0.75rem inside controls and rows, 1 to 1.5rem between groups.
 
 Each page opens with one "Next" box, then the work. The class page header is a title plus three fixed readouts (Step, Spent of cap, Approved), then the film strip. Clip tables use one fixed label grid: rank, span, length, scores, category, and decision.
 
@@ -281,7 +281,7 @@ Corners are gentle and consistent. Controls, inputs, alerts, the Next box, and f
 ## Components
 
 ### Buttons
-Buttons are tactile and plain: weight 600, 0.93rem, `0.55rem 1rem` padding, 7px corners, a 1px border, and an inline 1.1em SVG icon when needed.
+Buttons are tactile and plain: weight 600, 0.93rem, `0.55rem 1rem` padding, 9px corners, a 1px border, and an inline 1.1em SVG icon when needed.
 - **Primary:** mask fill and border with mask-ink text. Hover goes to `mask-hi` and press to `mask-lo`. A page has one primary.
 - **Secondary (default):** `raised` fill, `line-hi` border, lavender-white text. Hover goes to `raised-hover` with an `ink-3` border.
 - **Approve:** leader fill with leader-ink text. Hover goes to `leader-hi`. It stays disabled until previews are rendered.
@@ -295,15 +295,15 @@ A pill with a dot drawn in `currentColor`. Default is `raised`/`ink-2` for "To r
 
 ### Cards / Containers
 - **Panel:** `panel` fill, 1px `line`, 14px corners, `1.4rem 1.6rem` padding. It is never nested inside another panel.
-- **Next box:** the single instruction per page. `raised` fill, `line-hi` border, 7px corners. The `attn` variant adds a pencil wash and a pencil heading. The `fail` variant adds a safety wash and a safety heading.
-- **Alert:** 7px, 1px border. `fail` uses a safety wash with pale-red text. `attn` uses a pencil wash.
+- **Next box:** the single instruction per page. `raised` fill, `line-hi` border, 9px corners. The `attn` variant adds a pencil wash and a pencil heading. The `fail` variant adds a safety wash and a safety heading.
+- **Alert:** 9px, 1px border. `fail` uses a safety wash with pale-red text. `attn` uses a pencil wash.
 - **Readouts:** small `well` boxes (min 7.5rem) holding a 0.75rem `ink-3` term over a 650-weight value.
 
 ### Inputs / Fields
-- **Style:** `well` fill, 1px `line`, 7px corners, `0.5rem 0.65rem` padding. Placeholder uses `ink-3`. Number inputs use mono tabular figures.
+- **Style:** `well` fill, 1px `line`, 9px corners, `0.5rem 0.65rem` padding. Placeholder uses `ink-3`. Number inputs use mono tabular figures.
 - **Hover:** the border steps to `line-hi`.
 - **Focus:** the border turns mask, the fill darkens one step, and a 3px `mask-wash` ring appears. There is no outline.
-- **Fieldsets** use a 1px `line` border at 7px. Checkboxes and radios take the mask accent.
+- **Fieldsets** use a 1px `line` border at 9px. Checkboxes and radios take the mask accent.
 
 ### Navigation
 The top bar holds the reel mark (violet SVG) and "Shera Clip" in bold lavender-white. Breadcrumbs follow in `ink-3` with `/` separators, links in `ink-2` that underline on hover, and the current crumb in `ink`. On the review page, Previous and Next are small buttons with `J`/`K` key hints.
@@ -328,10 +328,10 @@ Left-out moments share the same contact sheet, inside an open disclosure: each c
 
 ### Jev's Answer
 
-Inside "About this clip", a disclosure lists every question Jev answered: its label, its answer in mask-hi, confidence, the question as asked, and up to five options as thin probability bars (mask fill on a `line` track). Options Jev gave 0% are hidden.
+Inside "About this clip", a disclosure lists every question Jev answered: its label, its answer in mask-text, confidence, the question as asked, and up to five options as thin probability bars (mask fill on a `line` track). Options Jev gave 0% are hidden.
 
 ### Transcript and Trims
-The transcript is a scrolling `well` list (max 22rem) of full-width line buttons: a mono time followed by text in `ink-3`. Lines inside the clip span turn lavender-white on a 9% violet wash, with their times in `mask-hi`. The four edits below are collapsible `details` panels, each led by a round mono numeral and closed with a rotating chevron. Nudge buttons are small mono chips (`− line`, `− 0.5 s`, `+ 0.5 s`, `+ line`).
+The transcript is a scrolling `well` list (max 22rem) of full-width line buttons: a mono time followed by text in `ink-3`. Lines inside the clip span turn lavender-white on a 9% violet wash, with their times in `mask-text`. The four edits below are collapsible `details` panels, each led by a round mono numeral and closed with a rotating chevron. Nudge buttons are small mono chips (`− line`, `− 0.5 s`, `+ 0.5 s`, `+ line`).
 
 ## Do's and Don'ts
 
@@ -349,4 +349,4 @@ The transcript is a scrolling `well` list (max 22rem) of full-width line buttons
 - **Don't** use grease-pencil yellow for anything that does not need the operator.
 - **Don't** give panels at rest a static drop shadow. Resting depth is the tonal stack; only the floating surfaces glow, and only with the recorded drift.
 - **Don't** use a display or web font. The system stack exists for Bangla coverage.
-- **Don't** let pending strip-frame text fall below 4.5:1 (`#a09ad0` on the film frame measures about 6:1).
+- **Don't** let pending strip-frame text fall below 4.5:1 (`#a09ad0` on the film frame measures about 6.8:1).

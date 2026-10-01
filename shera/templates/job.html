@@ -134,7 +134,7 @@
   {% if other %}
   <details class="others" open>
     <summary>Other moments ({{ other|length }}) <span class="muted">— ranked by Jev's score, best first; each says why it was left out. Open one if you know it is good.</span></summary>
-    <ol class="sheet others-sheet">
+    <ol class="sheet">
       {% for c in other %}{% set r = reviews.get(c.id) %}{% set st = r.status if r else 'pending' %}{% set x = explain(c) %}
       <li class="shot r-{{ st }}">
         <a class="gate shot-gate" href="/jobs/{{ job.id }}/clips/{{ c.id }}" aria-label="Open a left-out moment at {{ c.start|t }}">
