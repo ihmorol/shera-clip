@@ -28,6 +28,10 @@
   --r: 10px;
   --r-sm: 7px;
   --shadow: 0 10px 30px -12px rgba(0, 0, 0, .55), 0 2px 6px -2px rgba(0, 0, 0, .35);
+  /* the darkroom glow: the two floating surfaces carry a soft shadow that leans mask-orange,
+     then run-cyan, over ~24s — depth with a slight moving gradient touch */
+  --glow-a: 0 18px 50px -18px rgba(0, 0, 0, .62), 0 10px 44px -14px rgba(255, 138, 61, .16), 0 2px 6px -2px rgba(0, 0, 0, .35);
+  --glow-b: 0 18px 50px -18px rgba(0, 0, 0, .62), 0 10px 44px -14px rgba(122, 214, 220, .14), 0 2px 6px -2px rgba(0, 0, 0, .35);
   --sans: "Segoe UI Variable Text", "Segoe UI", "Nirmala UI", system-ui, -apple-system, "Noto Sans Bengali", sans-serif;
   --mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
   font-family: var(--sans);
@@ -40,7 +44,24 @@
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-body { margin: 0; min-height: 100vh; background: var(--ground); }
+/* the darkroom is not flat: a slow ambient gradient drifts behind the work (one authored
+   motion for the whole app, off under reduced-motion). The base tint sits on body, the
+   drifting glows on body::below-content so panels keep their solid, readable surfaces. */
+html { background: var(--ground); }
+body { margin: 0; min-height: 100vh; position: relative; }
+body::before {
+  content: ""; position: fixed; inset: -12%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(52rem 36rem at 18% 22%, rgba(122, 214, 220, .055), transparent 62%),
+    radial-gradient(46rem 32rem at 84% 78%, rgba(255, 138, 61, .05), transparent 58%),
+    radial-gradient(60rem 44rem at 60% 8%, rgba(20, 68, 74, .35), transparent 65%);
+  animation: drift 34s ease-in-out infinite alternate;
+}
+@keyframes drift {
+  0%   { transform: translate3d(-2.5%, -1.5%, 0) scale(1); }
+  50%  { transform: translate3d(2%, 2.5%, 0) scale(1.06); }
+  100% { transform: translate3d(1.5%, -2%, 0) scale(1); }
+}
 ::selection { background: var(--mask); color: var(--mask-ink); }
 * { scrollbar-width: thin; scrollbar-color: var(--line-hi) transparent; }
 
@@ -62,7 +83,7 @@ ul.plain { margin: .25rem 0; padding-left: 1.1rem; }
 ul.plain li { margin: .25rem 0; }
 
 /* ---------- frame ---------- */
-.top { display: flex; gap: 1.25rem; align-items: center; padding: .7rem 1.5rem; border-bottom: 1px solid var(--line); background: var(--well); position: sticky; top: 0; z-index: 5; }
+.top { display: flex; gap: 1.25rem; align-items: center; padding: .7rem 1.5rem; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, rgba(255, 255, 255, .025), rgba(255, 255, 255, 0) 70%), var(--well); position: sticky; top: 0; z-index: 5; }
 .brand { display: inline-flex; gap: .5rem; align-items: center; font-weight: 700; font-size: 1.02rem; color: var(--ink); text-decoration: none; letter-spacing: -.01em; }
 .brand .i { color: var(--mask); width: 1.35em; height: 1.35em; }
 .crumbs { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; color: var(--ink-3); font-size: .92rem; min-width: 0; }
@@ -74,7 +95,8 @@ main { max-width: 1480px; margin: 0 auto; padding: 1.5rem 1.5rem 4rem; }
 .page-head h1 { font-size: 2rem; letter-spacing: -.02em; }
 .lede { color: var(--ink-2); max-width: 62ch; font-size: 1.05rem; }
 
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 1.25rem 1.35rem; margin-bottom: 1.25rem; }
+/* panels are top-lit: one tone rises toward the light like a bench under a lamp */
+.panel { background: linear-gradient(180deg, rgba(255, 255, 255, .03), rgba(255, 255, 255, 0) 92px), var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 1.25rem 1.35rem; margin-bottom: 1.25rem; }
 .head-row { display: flex; gap: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: .6rem; }
 .head-row h1, .head-row h2 { margin: 0; }
 
@@ -89,10 +111,10 @@ button, .button {
 button:hover:not(:disabled), .button:hover { background: #1c4148; border-color: var(--ink-3); color: var(--ink); }
 button:active:not(:disabled), .button:active { transform: translateY(1px); }
 button:disabled { opacity: .42; cursor: not-allowed; }
-button.primary, .button.primary { background: var(--mask); border-color: var(--mask); color: var(--mask-ink); }
+button.primary, .button.primary { background: linear-gradient(165deg, var(--mask-hi) -25%, var(--mask) 48%, var(--mask-lo) 130%); border-color: var(--mask); color: var(--mask-ink); box-shadow: 0 6px 18px -8px rgba(255, 138, 61, .55); }
 button.primary:hover:not(:disabled), .button.primary:hover { background: var(--mask-hi); border-color: var(--mask-hi); color: var(--mask-ink); }
 button.primary:active:not(:disabled) { background: var(--mask-lo); }
-button.ok { background: var(--leader); border-color: var(--leader); color: #062212; }
+button.ok { background: var(--leader); border-color: var(--leader); color: #062212; box-shadow: 0 6px 18px -8px rgba(127, 220, 156, .45); }
 button.ok:hover:not(:disabled) { background: #9be8b3; border-color: #9be8b3; color: #062212; }
 button.danger { background: transparent; color: var(--safety); border-color: rgba(255, 116, 102, .45); }
 button.danger:hover:not(:disabled) { background: var(--safety-wash); border-color: var(--safety); color: var(--safety); }
@@ -179,7 +201,7 @@ details > summary:hover { color: var(--mask-hi); }
 .pick { display: flex; gap: .5rem; }
 .pick input { font-family: var(--mono); font-size: .9rem; }
 
-.chooser { width: min(40rem, 92vw); border: 1px solid var(--line-hi); border-radius: var(--r); padding: 1.25rem 1.35rem; color: var(--ink); background: var(--panel); box-shadow: var(--shadow); }
+.chooser { width: min(40rem, 92vw); border: 1px solid var(--line-hi); border-radius: var(--r); padding: 1.25rem 1.35rem; color: var(--ink); background: linear-gradient(180deg, rgba(255, 255, 255, .03), rgba(255, 255, 255, 0) 92px), var(--panel); box-shadow: var(--glow-a); animation: glow-shift 24s ease-in-out infinite alternate; }
 .chooser::backdrop { background: rgba(3, 10, 11, .72); }
 .chooser-list { list-style: none; margin: .5rem 0; padding: .3rem; max-height: 55vh; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--well); }
 .chooser-list li { margin: 0; }
@@ -269,7 +291,8 @@ details > summary:hover { color: var(--mask-hi); }
 .review { display: grid; grid-template-columns: minmax(0, 1fr) minmax(30rem, 42rem); gap: 1.25rem; align-items: start; }
 .col { min-width: 0; }
 .bench { position: sticky; top: 4.2rem; }
-.bench .panel { margin-bottom: 0; box-shadow: var(--shadow); display: flex; flex-direction: column; max-height: calc(100vh - 5.4rem); }
+.bench .panel { margin-bottom: 0; box-shadow: var(--glow-a); animation: glow-shift 24s ease-in-out infinite alternate; display: flex; flex-direction: column; max-height: calc(100vh - 5.4rem); }
+@keyframes glow-shift { to { box-shadow: var(--glow-b); } }
 .bench .panel > * { flex: none; }
 /* the clip notes take whatever height the fixed panel has left, and scroll inside it rather than grow it */
 .bench .about { flex: 1 1 auto; min-height: 7rem; overflow-y: auto; margin-top: 1rem; padding: .85rem 1rem; border-radius: var(--r-sm); background: var(--well); border: 1px solid var(--line); font-size: .88rem; line-height: 1.45; overscroll-behavior: contain; }
