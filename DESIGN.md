@@ -227,7 +227,7 @@ Each signal has a `-wash` (12% alpha) for badge and alert backgrounds, and solid
 - **Film Stock** (`film`, `film-frame`, `film-frame-done`): the warm near-black of the step strip, its frames, and empty preview frames.
 
 ### Named Rules
-**The Orange Mask Rule.** Filled orange appears only on something you can press or on the current step. Orange ink also marks the editor's own coordinates: the clip rank, timecodes inside the clip span, trim-step numerals, and the reel mark. Orange never shows a status and never decorates.
+**The Orange Mask Rule.** Filled orange appears only on something you can press or on the current step. Orange ink also marks the editor's own coordinates: the clip rank, timecodes inside the clip span, trim-step numerals, and the reel mark. Orange never shows a status and never decorates — the recorded exceptions are the ambient ground drift and the darkroom glow's orange lean (D31), which sit behind or around content, never on it.
 
 **The Grease Pencil Rule.** Yellow means "you are needed." Waiting, paused, and warning share it, and nothing else uses it.
 
@@ -269,11 +269,10 @@ Breakpoints:
 The system is flat and uses tonal layering. Depth comes from four tones: `well` is recessed, `ground` is the floor, `panel` is the bench, and `raised` is a control. Borders are 1px splice lines. Only two surfaces float, so only they get a shadow.
 
 ### Shadow Vocabulary
-- **Bench lift** (`box-shadow: 0 10px 30px -12px rgba(0,0,0,.55), 0 2px 6px -2px rgba(0,0,0,.35)`): the base depth of the sticky review bench panel and the file-chooser dialog, which has a `rgba(3,10,11,.72)` backdrop.
-- **Darkroom glow** (`--glow-a` / `--glow-b`, 2026-10-01 owner direction): the two floating surfaces animate between a mask-orange-tinted and a run-cyan-tinted soft shadow (offset + blur, never a flat halo) over 24s — the "slight moving gradient shadow" of the world. The page ground itself drifts two low-alpha radial glows (run cyan, mask orange) over 34s behind everything; panels stay solid on top of it.
+- **Darkroom glow** (`--glow-a` / `--glow-b`, 2026-10-01 owner direction): the two floating surfaces — the sticky review bench panel and the file-chooser dialog (backdrop `rgba(3,10,11,.72)`) — carry a soft shadow that animates between a mask-orange-tinted and a run-cyan-tinted state (deep lift, offset + blur, plus a 2px contact layer) over 24s. It supersedes the earlier static bench lift. It drifts only while the bench actually floats (above 1180px). The page ground itself drifts two low-alpha radial glows (run cyan, mask orange) over a darker teal wash at the top, over 34s, behind everything; panels stay solid on top of it.
 
 ### Named Rules
-**The Tonal Stack Rule.** Inputs, lists, and readouts go down into `well`, and controls go up into `raised`. Only a surface that floats above scrolling content carries a shadow — and that shadow is the animated darkroom glow, not a static drop.
+**The Tonal Stack Rule.** Inputs, lists, and readouts go down into `well`, and controls go up into `raised`. Surfaces at rest take no static depth shadow: depth is the tonal stack, the two floating surfaces carry the animated darkroom glow, and pressable accents (primary and approve buttons, reel marks, rank chips) may hold a soft glow in their own colour.
 
 ## Shapes
 
