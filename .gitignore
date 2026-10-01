@@ -36,3 +36,6 @@ __pycache__/
 node_modules/
 dist/
 build/
+
+# Editable-install build artifacts
+*.egg-info/

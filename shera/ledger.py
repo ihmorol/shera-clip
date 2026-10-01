@@ -96,6 +96,21 @@ def recover_on_start():
     db.x("UPDATE paid_calls SET state='indeterminate', updated=? WHERE state IN ('sent','reserved')", time.time())
 
 
+def reap_orphans():
+    """CLI-side recovery: reap in-flight calls only where no runner can own them. Rows of
+    'running' jobs belong to a possibly-live process (the web app), and a 'draft' call may
+    belong to a live web task even on a finished job — both are left alone."""
+    db.x("UPDATE paid_calls SET state='indeterminate', updated=? WHERE state IN ('sent','reserved') "
+         "AND kind != 'draft' AND job_id IN (SELECT id FROM jobs WHERE status != 'running')", time.time())
+
+
+def reap_stale(job_id):
+    """A --force takeover presumes the previous runner is dead, so its in-flight calls
+    become resolvable instead of blocking the resumed job forever."""
+    db.x("UPDATE paid_calls SET state='indeterminate', updated=? WHERE job_id=? AND state IN ('sent','reserved')",
+         time.time(), job_id)
+
+
 def resolve(call_id):
     """Operator chose retry: the old call stays counted as possibly spent and the key is free."""
     db.x("UPDATE paid_calls SET state='abandoned', updated=? WHERE id=? AND state='indeterminate'",

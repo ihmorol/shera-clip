@@ -35,6 +35,21 @@ python -m shera
 
 The app opens at `http://127.0.0.1:8765`. Put `class.mp4` and `class.vtt` (same file name) in `data/inbox/`, or paste their paths on the home page. With the four `ZOOM_*` values in `.env`, **Choose from Zoom cloud recordings** lists the teacher's cloud recordings a month at a time and downloads the chosen one. Then import the class and authorize paid work, which is capped at USD 1.50 per class. Review the shortlist, render a phone preview, and approve. Finally, export; packages land in `data/exports/<job>/`.
 
+## Drive it from a terminal (D29)
+
+The same pipeline runs headlessly with JSON output, so a script or an AI agent can do the machine stages while a human still approves every clip in the review UI:
+
+```bash
+shera import class.mp4 --vtt class.vtt   # runs until the job waits for a human
+shera authorize <job-id>                 # show the cost estimate
+shera authorize <job-id> --yes           # authorize paid calls up to the USD 1.50 cap
+shera candidates <job-id> --all          # ranked candidates, scores, and why weak ones are out
+shera export <job-id>                    # package approved clips into data/exports/<job>/
+shera zoom list                          # cloud recordings, when the ZOOM_* values are set
+```
+
+`shera --help` lists every command (`job`, `run`, `calls`, `resolve`, `delete`, `zoom import`, ...). Every valid command prints one JSON object; a failure — including a usage error — exits 1 with the error named in the JSON (`--help` prints plain text). The CLI has no approve/reject command: approval stays a human act in the review UI. Pass `--data` (or set `SHERA_DATA`) to point a run at a different data folder.
+
 Run the tests with `pip install -e .[test]` and then `python -m pytest -q`. They generate their own synthetic media.
 
 See [contributing and maintenance](CONTRIBUTING.md) before changing product decisions.

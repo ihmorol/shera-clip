@@ -371,15 +371,9 @@ def zoom_list(request: Request, to: str = ""):
 @app.post("/zoom/import")
 def zoom_import(request: Request, uuid: str = Form(...), mp4: str = Form(...), vtt: str = Form(""), m4a: str = Form("")):
     try:
-        occ = zoom.occurrence(zoom.meeting(uuid))  # the form's file ids must still be completed files of this occurrence
+        _, title = zoom.checked_occurrence(uuid, mp4, vtt, m4a)  # the form's file ids must still be completed files
     except zoom.ZoomError as e:
         return _zoom_page(request, error=str(e), status_code=400)
-    if (mp4 not in {v["id"] for v in occ["videos"]} or vtt not in ("", (occ["vtt"] or {}).get("id"))
-            or m4a not in ("", (occ["m4a"] or {}).get("id"))):
-        return _zoom_page(request, error="That recording file is no longer in Zoom or not ready yet. "
-                                         "Refresh the list and choose again.", status_code=400)
-    when = zoom.local_time(occ["start"])
-    title = occ["topic"] + (when.strftime(" · %d %b %Y") if when else "")
     job_id = pipeline.start_zoom_job(uuid, title, mp4, vtt=vtt or None, m4a=m4a or None)
     return RedirectResponse(f"/jobs/{job_id}", 303)
 
