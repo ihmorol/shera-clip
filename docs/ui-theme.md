@@ -17,8 +17,8 @@ Make a three-hour class feel like a small, reviewable set of teaching decisions.
 
 The built visual system, including tokens, components, and rules, is recorded in [DESIGN.md](../DESIGN.md), which replaces the provisional neutral/blue direction that used to be here.
 
-- **World:** a film cutting room. The ground is dark darkroom teal, panels are one tone lighter, and text is warm film-base ivory.
-- **Accent:** colour-negative orange marks only pressable actions and the current step. Leader green means approved, grease-pencil yellow means the operator is needed, safety red means failed, and cyan means working.
+- **World:** a film cutting room at midnight. The ground is deep screening-room indigo, panels are one tone lighter, and text is lavender-white.
+- **Accent:** screen-light violet marks only pressable actions and the current step. Signal blue means approved, grease-pencil yellow means the operator is needed, safety red means failed, and run violet means working.
 - **Signatures:** a sprocket-holed film-strip step rail, mono edge-print timecodes, and a sticky review bench with portrait 9:16 and landscape 16:9 previews side by side.
 - **Type and motion:** system sans with Bangla coverage, 150ms state feedback, one slow ambient ground drift with a matching glow on the floating panels (2026-10-01 owner direction), and no motion under reduced-motion.
 

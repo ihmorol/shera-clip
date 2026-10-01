@@ -224,7 +224,7 @@ def estimate(job_id):
     windows = len(cand.build_windows(_units(job_id))) if has_t else int(job["duration"] // 30) + 1
     return {"transcription": 0.0 if has_t else job["duration"] / 60 * config.STT_USD_PER_MIN,
             "translation": job["duration"] / 60 * config.TRANSLATE_USD_PER_MIN,
-            "ranking": config.JEV_EST_USD * windows, "drafts": config.DRAFT_EST_USD * 10, "windows": windows}
+            "ranking": config.JEV_EST_USD * windows, "drafts": config.DRAFT_EST_USD * 10, "windows": windows}  # nominal ten: the shortlist size is unknown before scoring (D33 uncapped)
 
 
 def _authorize(job_id):

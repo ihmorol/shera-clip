@@ -104,10 +104,13 @@ def _units(job_id):
 
 
 def _ordered(job_id):
-    """Shortlist by rank, then everything else by source time."""
+    """Shortlist by rank, then everything else by the decision-model score, best first
+    (unscored last), so the operator scans left-out moments in the same order of promise."""
     cs = db.candidates(job_id)
     short = sorted((c for c in cs if c["shortlisted"]), key=lambda c: c["rank"])
-    return short, [c for c in cs if not c["shortlisted"]]
+    other = sorted((c for c in cs if not c["shortlisted"]),
+                   key=lambda c: (-(c["score"] if c["score"] is not None else -1.0), c["start"]))
+    return short, other
 
 
 def _reviews(job_id):
@@ -182,7 +185,7 @@ def explain(c, drafts=None):
 
 
 def left_out(c, short):
-    """Why a scored candidate is not on the shortlist (mirrors candidates.shortlist)."""
+    """Why a scored candidate is not on the shortlist (mirrors candidates.shortlist, D33: no count cap)."""
     if c["score"] is None:
         return "Not scored"
     low = [SHORT[q][_level(c[q])] for q in ("value", "clarity") if (c[q] or 0) < 2]
@@ -190,11 +193,18 @@ def left_out(c, short):
         return "Left out: " + " and ".join(low)
     if not cand.is_teacher(c):
         return f"Left out: a played recording, not the teacher (Jev: {c['teacher'] * 100:.0f}% teacher)"
+    off, private_ = cand.jev(c, "offtopic"), cand.jev(c, "private")
+    if (off or 0) >= 0.5:
+        return "Left out: off-topic chatter, not teaching"
+    if (private_ or 0) >= 0.5:
+        return "Left out: a student's private details"
+    if cand.jev(c, "postable") is not None and cand.jev(c, "postable") < 2:
+        return "Left out: too thin to post on its own"
     over = next((k for k in short if min(c["end"], k["end"]) - max(c["start"], k["start"]) > 0), None)
     if over:
         return f"Left out: overlaps clip {over['rank']}, which scored higher"
     again = cand.repeat_of(c, short)
-    return f"Left out: repeats clip {again['rank']}" if again else "Left out: ranked below the top 10"
+    return f"Left out: repeats clip {again['rank']}" if again else "Left out: below the shortlist cut for this class"
 
 
 QUESTION_LABELS = {"value": "Teaching value", "clarity": "Stands alone", "opening": "Opening hook",

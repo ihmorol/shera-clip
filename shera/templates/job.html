@@ -38,7 +38,7 @@
       <tr><th scope="row">Transcribe the audio <span class="muted">({{ stt_model }})</span></th><td class="num">{{ est.transcription|usd }}</td></tr>
       <tr><th scope="row">Translate the Bangla into English <span class="muted">({{ translate_model }})</span></th><td class="num">{{ est.translation|usd }}</td></tr>
       <tr><th scope="row">Ask Jev about {{ est.windows }} possible 60–90 s clips</th><td class="num">{{ est.ranking|usd }}</td></tr>
-      <tr><th scope="row">Draft posting text for up to 10 clips</th><td class="num">{{ est.drafts|usd }}</td></tr>
+      <tr><th scope="row">Draft posting text for every suggested clip <span class="muted">(estimated at ten)</span></th><td class="num">{{ est.drafts|usd }}</td></tr>
       <tr class="total"><th scope="row">Estimate</th><td class="num">{{ (est.transcription + est.translation + est.ranking + est.drafts)|usd }}</td></tr>
       </tbody>
     </table>
@@ -132,18 +132,26 @@
   {% elif job.status != 'done' %}<p class="muted">Suggestions appear here once Jev has scored the class.</p>{% endif %}
 
   {% if other %}
-  <details class="others">
-    <summary>Other moments ({{ other|length }}) <span class="muted">— not suggested; each says why. Open one if you know it is good.</span></summary>
-    <table class="clips">
-      <thead><tr><th scope="col">Moment</th><th scope="col">Where in the class</th><th scope="col"><span class="sr">Open</span></th></tr></thead>
-      <tbody>
-      {% for c in other %}{% set x = explain(c) %}
-      <tr><td class="about-cell"><span class="what">“{{ x.opens }}”</span><span class="why">{{ left_out(c, short) }}{% if x.why %} · {{ x.why }}{% endif %}</span></td>
-        <td class="mono nowrap">{{ c.start|t }} – {{ c.end|t }}</td>
-        <td><a class="button small" href="/jobs/{{ job.id }}/clips/{{ c.id }}">Open</a></td></tr>
+  <details class="others" open>
+    <summary>Other moments ({{ other|length }}) <span class="muted">— ranked by Jev's score, best first; each says why it was left out. Open one if you know it is good.</span></summary>
+    <ol class="sheet">
+      {% for c in other %}{% set r = reviews.get(c.id) %}{% set st = r.status if r else 'pending' %}{% set x = explain(c) %}
+      <li class="shot r-{{ st }}">
+        <a class="gate shot-gate" href="/jobs/{{ job.id }}/clips/{{ c.id }}" aria-label="Open a left-out moment at {{ c.start|t }}">
+          <img src="/jobs/{{ job.id }}/clips/{{ c.id }}/frame.jpg" alt="" loading="lazy" width="480" height="270">
+          <span class="shot-rank num out">{% if c.score is not none %}{{ '%.2f'|format(c.score) }}{% else %}–{% endif %}</span>
+          <span class="shot-len num mono">{{ '%.0f'|format(c.end - c.start) }} s</span>
+        </a>
+        <div class="shot-body">
+          <h3><a href="/jobs/{{ job.id }}/clips/{{ c.id }}">“{{ x.opens }}”</a></h3>
+          {% if x.opens_en %}<p class="en">{{ x.opens_en }}</p>{% endif %}
+          <p class="why">{{ left_out(c, short) }}{% if x.why %} · {{ x.why }}{% endif %}</p>
+          <p class="shot-foot"><span class="mono muted">{{ c.start|t }} – {{ c.end|t }}</span>
+            <span class="badge r-{{ st }}">{{ STATUS_LABELS.get(st, st) }}</span></p>
+        </div>
+      </li>
       {% endfor %}
-      </tbody>
-    </table>
+    </ol>
   </details>
   {% endif %}
 </section>
