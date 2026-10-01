@@ -199,6 +199,15 @@ function render() {
 render();
 if (state.render === "running" || state.draft === "running") setTimeout(poll, 1000);
 
+// open where the clip begins: bring the first in-clip transcript line into view,
+// without scrolling the page itself
+const lines = document.querySelector(".transcript");
+const firstIn = lines && lines.querySelector(".unit.in");
+if (firstIn) {
+  lines.scrollTop = firstIn.getBoundingClientRect().top
+    - lines.getBoundingClientRect().top + lines.scrollTop - 8;
+}
+
 // ---- keyboard: J / K previous / next candidate ----
 document.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input, textarea, select, video")) return;

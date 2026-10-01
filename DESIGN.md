@@ -200,6 +200,7 @@ The app runs on the operator's laptop and uses system fonts only. The font stack
 - Film-strip step rail with sprocket holes, one frame per pipeline step.
 - A sticky cutting bench with portrait 9:16 and landscape 16:9 previews side by side.
 - Mono edge-print timecodes and tabular numbers wherever time, money, or rank is read.
+- A living darkroom: the page ground carries a slow ambient gradient drift, and the two floating surfaces (review bench, file chooser) hold a soft glow that leans mask-orange, then run-cyan. Both stop under reduced-motion.
 
 ## Colors
 
@@ -226,7 +227,7 @@ Each signal has a `-wash` (12% alpha) for badge and alert backgrounds, and solid
 - **Film Stock** (`film`, `film-frame`, `film-frame-done`): the warm near-black of the step strip, its frames, and empty preview frames.
 
 ### Named Rules
-**The Orange Mask Rule.** Filled orange appears only on something you can press or on the current step. Orange ink also marks the editor's own coordinates: the clip rank, timecodes inside the clip span, trim-step numerals, and the reel mark. Orange never shows a status and never decorates.
+**The Orange Mask Rule.** Filled orange appears only on something you can press or on the current step. Orange ink also marks the editor's own coordinates: the clip rank, timecodes inside the clip span, trim-step numerals, and the reel mark. Orange never shows a status and never decorates — the recorded exceptions are the ambient ground drift and the darkroom glow's orange lean (D31), which sit behind or around content, never on it.
 
 **The Grease Pencil Rule.** Yellow means "you are needed." Waiting, paused, and warning share it, and nothing else uses it.
 
@@ -268,10 +269,10 @@ Breakpoints:
 The system is flat and uses tonal layering. Depth comes from four tones: `well` is recessed, `ground` is the floor, `panel` is the bench, and `raised` is a control. Borders are 1px splice lines. Only two surfaces float, so only they get a shadow.
 
 ### Shadow Vocabulary
-- **Bench lift** (`box-shadow: 0 10px 30px -12px rgba(0,0,0,.55), 0 2px 6px -2px rgba(0,0,0,.35)`): the sticky review bench panel and the file-chooser dialog, which has a `rgba(3,10,11,.72)` backdrop.
+- **Darkroom glow** (`--glow-a` / `--glow-b`, 2026-10-01 owner direction): the two floating surfaces — the sticky review bench panel and the file-chooser dialog (backdrop `rgba(3,10,11,.72)`) — carry a soft shadow that animates between a mask-orange-tinted and a run-cyan-tinted state (deep lift, offset + blur, plus a 2px contact layer) over 24s. It supersedes the earlier static bench lift. It drifts only while the bench actually floats (above 1180px). The page ground itself drifts two low-alpha radial glows (run cyan, mask orange) over a darker teal wash at the top, over 34s, behind everything; panels stay solid on top of it.
 
 ### Named Rules
-**The Tonal Stack Rule.** Inputs, lists, and readouts go down into `well`, and controls go up into `raised`. Only a surface that floats above scrolling content gets a shadow.
+**The Tonal Stack Rule.** Inputs, lists, and readouts go down into `well`, and controls go up into `raised`. Surfaces at rest take no static depth shadow: depth is the tonal stack, the two floating surfaces carry the animated darkroom glow, and pressable accents (primary and approve buttons, reel marks) may hold a soft glow in their own colour.
 
 ## Shapes
 
@@ -336,12 +337,12 @@ The transcript is a scrolling `well` list (max 22rem) of full-width line buttons
 - **Do** set time, paths, and typed numbers in the mono edge-print face with tabular figures.
 - **Do** put one "Next" box at the top of each page and phrase it as a plain instruction.
 - **Do** keep the portrait and landscape previews side by side on the bench, each labelled with its ratio and destinations.
-- **Do** show state changes with colour transitions of about 150ms, and turn all motion off under `prefers-reduced-motion`.
+- **Do** keep the ambient motion to the recorded two moments (ground drift, floating-surface glow), keep both slow and low-alpha, and turn all motion off under `prefers-reduced-motion`.
 
 ### Don't:
 - **Don't** bring back white cards, neutral grey surfaces, or a blue accent. This world replaced them.
 - **Don't** use orange for a status, a chart, or decoration.
 - **Don't** use grease-pencil yellow for anything that does not need the operator.
-- **Don't** add shadows to panels at rest. Depth comes from the tonal stack.
+- **Don't** give panels at rest a static drop shadow. Resting depth is the tonal stack; only the floating surfaces glow, and only with the recorded drift.
 - **Don't** use a display or web font. The system stack exists for Bangla coverage.
 - **Don't** let pending strip-frame text fall below 4.5:1 (`#a1937f` on the film frame measures about 5.6:1).
