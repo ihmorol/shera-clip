@@ -62,15 +62,16 @@ def blocker(c):
     return None
 
 
-def shortlist(cands, n=10):
+def shortlist(cands, n=None):
     """cands: dicts with id, start, end, value, clarity, score, and optionally teacher, jev, text_en/text.
     Keeps teacher talk worth >= 2 on value and clarity that Jev finds postable, on-topic and free of student
     details, with no big time overlap and no repeated passage (a listening recording played twice).
-    Returns kept ids in rank order (may be empty)."""
+    No count cap by default (D33): every passing candidate is shortlisted; `n` still bounds it for callers
+    that ask. Returns kept ids in rank order (may be empty)."""
     ok = [c for c in cands if blocker(c) is None]
     kept = []
     for c in sorted(ok, key=lambda c: (-c["score"], c["start"])):
-        if len(kept) == n:
+        if n is not None and len(kept) == n:
             break
         if (all(_overlap(c, k) <= 0.3 * min(c["end"] - c["start"], k["end"] - k["start"]) for k in kept)
                 and repeat_of(c, kept) is None):

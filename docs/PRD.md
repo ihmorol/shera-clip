@@ -43,7 +43,7 @@ The priority order is **publishable clips > less manual work > low cost > speed*
 
 ### Ranking and review
 
-17. As the operator, I want roughly ten strongest candidates ranked, so that I can review a manageable shortlist.
+17. As the operator, I want every qualifying candidate ranked by the decision model, so that no worthwhile moment is hidden behind an arbitrary count (D33).
 18. As the operator, I want educational value, standalone clarity, and opening strength shown separately, so that I understand why a clip was suggested.
 19. As the operator, I want one primary category and optional IELTS topic tags, so that the posting package is organized.
 20. As the operator, I want weak or uncertain candidates visible but outside the normal shortlist, so that the app does not silently discard possible lessons.
@@ -82,7 +82,7 @@ The priority order is **publishable clips > less manual work > low cost > speed*
 - **Taxonomy:** Primary categories are Exam tip, Worked example, Common mistake and correction, Vocabulary/phrase, Practice exercise, and Other. Optional tags include IELTS module, task type, skill, and level. The operator can edit both.
 - **Quality policy:** A clip must provide a complete, accurate, relevant takeaway with a useful opening. No clickbait, cut-off words, missing teaching content, knowingly wrong captions, or unreviewed private details. Prioritize teaching truth over a dramatic excerpt. Do not manufacture three clips from weak material.
 - **Duration (D24):** Target about 75 seconds within 60–90 seconds, so each clip holds one complete teaching point; flag shorter or longer spans for operator choice instead of truncating them.
-- **Review:** Auto-prepare about ten previews and drafts, then require per-clip human approval. Provide quick approve/edit/reject controls and focus manual attention on flagged problems. Treat recording permission as settled; there is no separate per-clip permission workflow.
+- **Review:** Auto-prepare previews and drafts for every shortlisted candidate, then require per-clip human approval. Provide quick approve/edit/reject controls and focus manual attention on flagged problems. Treat recording permission as settled; there is no separate per-clip permission workflow.
 - **Portrait composition:** Readable slide or Word content comes first. Keep or reposition the teacher's corner video where practical. A scaled full-frame layout is acceptable only when phone-preview text is legible; any crop must not hide teaching content. Caption placement must not obscure it.
 - **Captions:** Preserve Bangla and English as spoken. Provide editable timed subtitles and a subtitle file; visible captions are the default for approved exports after correction.
 - **Posting drafts:** A separate OpenRouter generative model receives only the selected clip excerpt and category to draft editable Facebook and YouTube title, description, and modest CTA text. Jev does not generate prose. Avoid invented score, admission, or outcome claims. Omit unsupplied logos, handles, URLs, and examples.

@@ -104,10 +104,13 @@ def _units(job_id):
 
 
 def _ordered(job_id):
-    """Shortlist by rank, then everything else by source time."""
+    """Shortlist by rank, then everything else by the decision-model score, best first
+    (unscored last), so the operator scans left-out moments in the same order of promise."""
     cs = db.candidates(job_id)
     short = sorted((c for c in cs if c["shortlisted"]), key=lambda c: c["rank"])
-    return short, [c for c in cs if not c["shortlisted"]]
+    other = sorted((c for c in cs if not c["shortlisted"]),
+                   key=lambda c: (-(c["score"] if c["score"] is not None else -1.0), c["start"]))
+    return short, other
 
 
 def _reviews(job_id):

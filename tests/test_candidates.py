@@ -56,9 +56,10 @@ def test_shortlist_drops_played_recordings_and_repeats():
     assert repeat_of(teacher, [replay]) is replay and repeat_of(recording, [teacher]) is None
 
 
-def test_shortlist_may_be_empty_and_respects_n():
+def test_shortlist_may_be_empty_and_caps_only_when_asked():
     assert shortlist([c(1, 0, 30, v=1)]) == []
-    assert len(shortlist([c(i, i * 100, i * 100 + 30) for i in range(15)])) == 10
+    assert len(shortlist([c(i, i * 100, i * 100 + 30) for i in range(15)])) == 15  # no count cap (D33)
+    assert len(shortlist([c(i, i * 100, i * 100 + 30) for i in range(15)], n=4)) == 4  # explicit cap still works
 
 
 def test_caption_lines_relative_and_clamped():
