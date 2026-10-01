@@ -37,12 +37,13 @@ def _write(path, data):
     tmp.replace(path)
 
 
-def start_job(src_mp4, vtt=None, audio=None):
+def start_job(src_mp4, vtt=None, audio=None, title=None):
     """audio: optional separate recording of the class sound (Zoom M4A); it replaces the video's own audio."""
     job_id = uuid.uuid4().hex[:12]
     db.x("INSERT INTO jobs(id, created, title, source_path, vtt_path, audio_path, stage, status, progress, flags) "
          "VALUES (?, ?, ?, ?, ?, ?, 'import', 'running', 0, '[]')",
-         job_id, time.time(), Path(src_mp4).stem, str(src_mp4), str(vtt) if vtt else None, str(audio) if audio else None)
+         job_id, time.time(), title or Path(src_mp4).stem, str(src_mp4),
+         str(vtt) if vtt else None, str(audio) if audio else None)
     _spawn(job_id)
     return job_id
 
@@ -79,13 +80,16 @@ def authorize(job_id):
 
 
 def recover():
-    """DB init and ledger recovery without re-running interrupted jobs (the CLI calls this)."""
+    """CLI-side recovery: DB init plus reaping in-flight calls that no runner can own.
+    The server's on_start instead runs the full recover_on_start: at a process start the
+    previous runner is gone, so every 'sent' row becomes resolvable."""
     db.init()
-    ledger.recover_on_start()
+    ledger.reap_orphans()
 
 
 def on_start():
-    recover()
+    db.init()
+    ledger.recover_on_start()
     for job in db.list_jobs():
         if job["status"] == "running":
             _spawn(job["id"])

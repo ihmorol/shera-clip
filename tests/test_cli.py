@@ -2,6 +2,7 @@
 import json
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -197,6 +198,82 @@ def test_failed_job_is_reported_not_crashed(env, capsys, monkeypatch):
     rc, out = run(capsys, "candidates", jid, "--all")
     assert rc == 0 and all(c["score"] is None for c in out["candidates"])
     assert ledger.spent(jid) == 0  # the key check fires before any spend; the failed attempt costs nothing
+
+
+def test_usage_errors_stay_json(env, capsys):
+    with pytest.raises(SystemExit) as e:
+        cli.main(["job"])  # missing argument
+    assert e.value.code == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is False and "usage" in out["error"]
+    with pytest.raises(SystemExit) as e:
+        cli.main(["nope"])  # unknown command
+    assert e.value.code == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is False
+
+
+def test_export_refuses_running_job(env, capsys):
+    src, vtt = env
+    _, out = run(capsys, "import", str(src), "--vtt", str(vtt))
+    jid = out["job"]["id"]
+    db.update_job(jid, status="running")
+    rc, out = run(capsys, "export", jid)
+    assert rc == 1 and "marked running" in out["error"]
+    rc, out = run(capsys, "export", jid, "--force")  # takeover; nothing approved yet
+    assert rc == 0 and out["clips"] == [] and out["skipped"] == []
+
+
+def test_import_title_and_zoom_audio(env, capsys, monkeypatch, tmp_path):
+    src, vtt = env
+    monkeypatch.setattr(media, "sync_offset", lambda v, a: (0.25, "sound"))
+    monkeypatch.setattr(media, "mux_audio", lambda v, a, off, out_path: Path(out_path).write_bytes(b"muxed"))
+    m4a = tmp_path / "zoom.m4a"
+    m4a.write_bytes(b"not really audio")
+    rc, out = run(capsys, "import", str(src), "--vtt", str(vtt), "--audio", str(m4a), "--title", "Week 3 class")
+    assert rc == 0
+    job = out["job"]
+    assert job["title"] == "Week 3 class"
+    assert Path(config.JOBS, job["id"], "media.mp4").is_file()
+    assert any("lined up by matching sound" in f for f in job["flags"])
+    rc, out = run(capsys, "import", str(src), "--audio", str(tmp_path / "missing.m4a"))
+    assert rc == 1 and "audio" in out["error"]
+
+
+def test_sent_call_recovery_loop(env, capsys):
+    """A runner died mid-call: the CLI reaps the orphaned 'sent' row, pauses, lets the
+    operator resolve it, and then finishes the job."""
+    src, vtt = env
+    _, out = run(capsys, "import", str(src), "--vtt", str(vtt))
+    jid = out["job"]["id"]
+    now = time.time()
+    cid = db.x("INSERT INTO paid_calls(job_id, key, kind, state, est_usd, created, updated) "
+               "VALUES (?, 'jev2:1', 'jev', 'sent', 0.002, ?, ?)", jid, now, now)
+    rc, out = run(capsys, "resolve", str(cid))  # a live runner may own it: refused
+    assert rc == 1 and "'sent'" in out["error"]
+    rc, out = run(capsys, "authorize", jid, "--yes")  # recover() reaps the orphan, the PENDING check pauses
+    assert rc == 0 and out["job"]["status"] == "paused"
+    assert "resolve stuck calls" in out["next"]
+    rc, out = run(capsys, "resolve", str(cid))
+    assert rc == 0 and "abandoned" in out["note"]
+    rc, out = run(capsys, "run", jid)  # retried in place; the good fake finishes the job
+    assert rc == 0 and out["job"]["status"] == "done"
+    rc, out = run(capsys, "calls", jid)
+    assert rc == 0 and len(out["calls"]) >= 1
+
+
+def test_recover_leaves_web_draft_calls_alone(env, capsys):
+    """A 'draft' call can belong to a live web task even on a non-running job, so CLI
+    recovery must never reap it (only a --force takeover may)."""
+    src, vtt = env
+    _, out = run(capsys, "import", str(src), "--vtt", str(vtt))
+    jid = out["job"]["id"]
+    now = time.time()
+    draft_id = db.x("INSERT INTO paid_calls(job_id, key, kind, state, est_usd, created, updated) "
+                    "VALUES (?, 'draft:x', 'draft', 'sent', 0.002, ?, ?)", jid, now, now)
+    rc, out = run(capsys, "authorize", jid, "--yes")  # runs CLI recovery; job is not running
+    assert rc == 0 and out["job"]["status"] == "done"
+    assert db.one("SELECT state FROM paid_calls WHERE id=?", draft_id)["state"] == "sent"
 
 
 def test_zoom_list_requires_setup(env, capsys, monkeypatch):

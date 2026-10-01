@@ -48,7 +48,7 @@ shera export <job-id>                    # package approved clips into data/expo
 shera zoom list                          # cloud recordings, when the ZOOM_* values are set
 ```
 
-`shera --help` lists every command (`job`, `run`, `calls`, `resolve`, `delete`, `zoom import`, ...). Every command prints one JSON object; exit 1 means an error the JSON names. The CLI has no approve/reject command: approval stays a human act in the review UI. Pass `--data` (or set `SHERA_DATA`) to point a run at a different data folder.
+`shera --help` lists every command (`job`, `run`, `calls`, `resolve`, `delete`, `zoom import`, ...). Every valid command prints one JSON object; a failure — including a usage error — exits 1 with the error named in the JSON (`--help` prints plain text). The CLI has no approve/reject command: approval stays a human act in the review UI. Pass `--data` (or set `SHERA_DATA`) to point a run at a different data folder.
 
 Run the tests with `pip install -e .[test]` and then `python -m pytest -q`. They generate their own synthetic media.
 

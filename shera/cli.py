@@ -1,9 +1,9 @@
 """Headless CLI over the pipeline (D29): the machine stages, driven with JSON and exit codes.
 
-Every command prints one JSON object on stdout; exit 0 means the command did its part,
-1 means an error the JSON names. The review UI stays the only place a clip is approved:
-there is no approve command, and paid calls need an explicit `authorize --yes` inside the
-same hard USD 1.50 cap as the web app (D11).
+Every valid command prints one JSON object on stdout; exit 0 means the command did its part,
+1 means an error the JSON names (usage errors included). The review UI stays the only place
+a clip is approved: there is no approve command, and paid calls need an explicit
+`authorize --yes` inside the same hard USD 1.50 cap as the web app (D11).
 """
 import argparse
 import contextlib
@@ -33,10 +33,13 @@ def _job_or_fail(job_id):
 
 def _not_running(a, job):
     """pipeline._running only sees this process; the app's runner threads live in another one.
-    A 'running' row is therefore either the app working (wait) or a killed process's leftover (--force)."""
-    if job["status"] == "running" and not getattr(a, "force", False):
-        raise CmdError(f"Job {job['id']} is marked running, probably in the app. Wait for it to pause or finish. "
-                       "If the app is closed and the job is stuck from a killed process, re-run with --force.")
+    A 'running' row is therefore either the app working (wait) or a killed process's leftover.
+    --force takes the job over: its presumed-dead owner's in-flight calls become resolvable."""
+    if job["status"] == "running":
+        if not getattr(a, "force", False):
+            raise CmdError(f"Job {job['id']} is marked running, probably in the app. Wait for it to pause or finish. "
+                           "If the app is closed and the job is stuck from a killed process, re-run with --force.")
+        ledger.reap_stale(job["id"])
 
 
 def _detail(job):
@@ -56,7 +59,12 @@ def _detail(job):
 def _report(job_id):
     """Print the job after an inline run; a job that failed is a command error (exit 1)."""
     job = db.get_job(job_id)
-    _out({"ok": job["status"] != "failed", "job": _detail(job)})
+    out = {"ok": job["status"] != "failed", "job": _detail(job)}
+    if job["status"] == "waiting" and job["stage"] == "authorize":
+        out["next"] = f"review the estimate with 'shera authorize {job_id}', then authorize it with --yes"
+    elif job["status"] == "paused":
+        out["next"] = f"check 'shera calls {job_id}' and resolve stuck calls, then 'shera run {job_id}'"
+    _out(out)
     return 0 if job["status"] != "failed" else 1
 
 
@@ -85,9 +93,7 @@ def cmd_import(a):
     vtt = _checked_path("transcript", a.vtt, ".vtt") if a.vtt else None
     audio = _checked_path("audio", a.audio, ".m4a") if a.audio else None
     pipeline.recover()
-    jid = pipeline.start_job(src, vtt, audio)
-    if a.title:
-        db.update_job(jid, title=a.title)
+    jid = pipeline.start_job(src, vtt, audio, title=a.title)
     return _report(jid)
 
 
@@ -149,6 +155,9 @@ def cmd_resolve(a):
     call = db.one("SELECT * FROM paid_calls WHERE id=?", a.call_id)
     if call is None:
         raise CmdError(f"No paid call {a.call_id}. Run 'shera calls <job>' to list them.")
+    if call["state"] == "sent":
+        raise CmdError(f"Call {a.call_id} is 'sent' — its runner may still be live in the app. Wait for the job "
+                       "to pause or finish; only a '--force' takeover of a stuck job frees its sent calls.")
     if call["state"] != "indeterminate":
         raise CmdError(f"Call {a.call_id} is {call['state']}, not indeterminate; nothing to resolve.")
     ledger.resolve(a.call_id)
@@ -158,7 +167,8 @@ def cmd_resolve(a):
 
 
 def cmd_export(a):
-    _job_or_fail(a.job_id)
+    job = _job_or_fail(a.job_id)
+    _not_running(a, job)
     root = pipeline.export(a.job_id)
     _out({"ok": True, "folder": str(root),
           "clips": json.loads((root / "index.json").read_text(encoding="utf-8")),
@@ -200,9 +210,18 @@ def cmd_zoom_import(a):
     return _report(jid)
 
 
+class _Parser(argparse.ArgumentParser):
+    """Usage errors keep the D29 contract: JSON on stdout, exit 1 — the first failure an
+    agent hits is a typo, and that is exactly where machine-readable errors matter."""
+
+    def error(self, message):
+        _out({"ok": False, "error": f"usage: {message}"})
+        raise SystemExit(1)
+
+
 def build_parser():
-    p = argparse.ArgumentParser(prog="shera", description="Shera Clip CLI: the machine stages with JSON output. "
-                                                          "Clip approval stays in the review UI (D29).")
+    p = _Parser(prog="shera", description="Shera Clip CLI: the machine stages with JSON output. "
+                                           "Clip approval stays in the review UI (D29).")
     p.add_argument("--data", help="data directory (default: $SHERA_DATA or ./data beside the app)")
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -246,6 +265,7 @@ def build_parser():
 
     e = sub.add_parser("export", help="package approved clips into data/exports/<job>/")
     e.add_argument("job_id")
+    e.add_argument("--force", action="store_true", help="export even when the job is marked running elsewhere")
     e.set_defaults(func=cmd_export)
 
     d = sub.add_parser("delete", help="delete a job, its media and its exports; --yes required")
@@ -290,7 +310,7 @@ def main(argv=None):
         return a.func(a)
     except (CmdError, ValueError, KeyError, ledger.BudgetStop, ledger.Indeterminate,
             ledger.ProviderError, zoom.ZoomError) as e:
-        _out({"ok": False, "error": str(e) or type(e).__name__})
+        _out({"ok": False, "error": str(e) or type(e).__name__, "exception": type(e).__name__})
         return 1
     except Exception as e:  # never print a fake success; the type name keeps it debuggable
         _out({"ok": False, "error": str(e) or type(e).__name__, "exception": type(e).__name__})
