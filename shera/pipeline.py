@@ -14,6 +14,7 @@ from shera import config, db, ledger, media, providers, transcript, zoom
 
 _running = set()
 _lock = threading.Lock()
+inline = False  # CLI mode: run jobs in the calling thread so the process waits for them
 
 
 def job_dir(job_id):
@@ -60,7 +61,10 @@ def start_zoom_job(meeting_uuid, title, mp4, vtt=None, m4a=None):
 
 
 def _spawn(job_id):
-    threading.Thread(target=run, args=(job_id,), daemon=True).start()
+    if inline:
+        run(job_id)
+    else:
+        threading.Thread(target=run, args=(job_id,), daemon=True).start()
 
 
 def resume(job_id):
@@ -74,9 +78,14 @@ def authorize(job_id):
     resume(job_id)
 
 
-def on_start():
+def recover():
+    """DB init and ledger recovery without re-running interrupted jobs (the CLI calls this)."""
     db.init()
     ledger.recover_on_start()
+
+
+def on_start():
+    recover()
     for job in db.list_jobs():
         if job["status"] == "running":
             _spawn(job["id"])

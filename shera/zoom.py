@@ -141,6 +141,17 @@ def local_time(iso):
         return None
 
 
+def checked_occurrence(uuid, mp4, vtt="", m4a=""):
+    """Fetch the occurrence and check the chosen file ids against it (D27). Returns (occurrence, title)."""
+    occ = occurrence(meeting(uuid))
+    if (mp4 not in {v["id"] for v in occ["videos"]} or vtt not in ("", (occ["vtt"] or {}).get("id"))
+            or m4a not in ("", (occ["m4a"] or {}).get("id"))):
+        raise ZoomError("That recording file is no longer in Zoom or not ready yet. "
+                        "Refresh the list and choose again.")
+    when = local_time(occ["start"])
+    return occ, occ["topic"] + (when.strftime(" · %d %b %Y") if when else "")
+
+
 def download(uuid, file_id, dst, on_progress=None):
     """Stream one recording file to dst via dst.part, hashing on the way; the byte count must match Zoom's.
     -> (sha256, bytes)."""
