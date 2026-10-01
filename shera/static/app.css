@@ -13,7 +13,7 @@
   --ink-3: #7e7e90;
   --mask: #5e53dd;          /* screen-light violet: actions and the current step only */
   --mask-hi: #6c61e8;    /* fills only: too dark for text — ink uses --mask-text (4.7-5.4:1 on panel, well, raised, wash) */
-  --mask-text: #8277f2;   /* violet as ink: 5.0-5.4:1 on panel, well, and the in-clip wash */
+  --mask-text: #8277f2;   /* violet as ink: 4.7-5.4:1 on panel, well, raised, and the in-clip wash */
   --mask-lo: #4a3fc4;
   --mask-ink: #ffffff;
   --mask-wash: rgba(108, 97, 232, .14);
