@@ -272,7 +272,7 @@ The system is flat and uses tonal layering. Depth comes from four tones: `well` 
 - **Darkroom glow** (`--glow-a` / `--glow-b`, 2026-10-01 owner direction): the two floating surfaces — the sticky review bench panel and the file-chooser dialog (backdrop `rgba(3,10,11,.72)`) — carry a soft shadow that animates between a mask-orange-tinted and a run-cyan-tinted state (deep lift, offset + blur, plus a 2px contact layer) over 24s. It supersedes the earlier static bench lift. It drifts only while the bench actually floats (above 1180px). The page ground itself drifts two low-alpha radial glows (run cyan, mask orange) over a darker teal wash at the top, over 34s, behind everything; panels stay solid on top of it.
 
 ### Named Rules
-**The Tonal Stack Rule.** Inputs, lists, and readouts go down into `well`, and controls go up into `raised`. Surfaces at rest take no static depth shadow: depth is the tonal stack, the two floating surfaces carry the animated darkroom glow, and pressable accents (primary and approve buttons, reel marks, rank chips) may hold a soft glow in their own colour.
+**The Tonal Stack Rule.** Inputs, lists, and readouts go down into `well`, and controls go up into `raised`. Surfaces at rest take no static depth shadow: depth is the tonal stack, the two floating surfaces carry the animated darkroom glow, and pressable accents (primary and approve buttons, reel marks) may hold a soft glow in their own colour.
 
 ## Shapes
 
