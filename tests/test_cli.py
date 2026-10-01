@@ -118,8 +118,10 @@ def test_full_run_candidates_and_export(env, capsys, monkeypatch):
     assert any(c["blocker"] == "low" for c in weak)
     assert all(c["score"] is not None for c in weak)
     assert any(c["review_status"] == "pending" for c in out["candidates"])
-    others = [c["score"] for c in out["candidates"] if not c["shortlisted"]]
-    assert others == sorted(others, reverse=True)  # the class page lists them best-first (D32)
+    from shera import app as web
+    _, other_ordered = web._ordered(jid)
+    got = [c["score"] for c in other_ordered]
+    assert got == sorted(got, reverse=True)  # the class page lists left-out moments best-first (D32)
 
     top = short[0]["id"]  # approve the way the review UI does, then the CLI can export it
     pipeline.render_preview(top)
