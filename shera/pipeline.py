@@ -88,6 +88,9 @@ def recover():
 
 
 def on_start():
+    """Server startup: DB init, then every 'sent' call becomes resolvable and running jobs re-spawn.
+    The global reap is safe here because the previous runner process is presumed gone; the CLI
+    instead reaps conservatively (recover/reap_orphans) since another process may be live."""
     db.init()
     ledger.recover_on_start()
     for job in db.list_jobs():

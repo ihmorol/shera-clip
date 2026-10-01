@@ -34,12 +34,15 @@ def _job_or_fail(job_id):
 def _not_running(a, job):
     """pipeline._running only sees this process; the app's runner threads live in another one.
     A 'running' row is therefore either the app working (wait) or a killed process's leftover.
-    --force takes the job over: its presumed-dead owner's in-flight calls become resolvable."""
+    Returns True when the caller is taking a stuck job over (--force) — the caller then reaps
+    that job's in-flight calls at the point where it actually mutates state."""
+
     if job["status"] == "running":
         if not getattr(a, "force", False):
             raise CmdError(f"Job {job['id']} is marked running, probably in the app. Wait for it to pause or finish. "
                            "If the app is closed and the job is stuck from a killed process, re-run with --force.")
-        ledger.reap_stale(job["id"])
+        return True
+    return False
 
 
 def _detail(job):
@@ -99,7 +102,9 @@ def cmd_import(a):
 
 def cmd_run(a):
     job = _job_or_fail(a.job_id)
-    _not_running(a, job)
+    takeover = _not_running(a, job)
+    if takeover:
+        ledger.reap_stale(a.job_id)
     pipeline.recover()
     pipeline.resume(a.job_id)
     return _report(a.job_id)
@@ -116,6 +121,8 @@ def cmd_authorize(a):
               "estimate": pipeline.estimate(a.job_id), "cap_usd": config.CAP_USD,
               "next": "re-run with --yes to authorize paid calls up to the hard cap"})
         return 0
+    if _not_running(a, job):
+        ledger.reap_stale(a.job_id)
     pipeline.recover()
     pipeline.authorize(a.job_id)
     return _report(a.job_id)
@@ -156,8 +163,9 @@ def cmd_resolve(a):
     if call is None:
         raise CmdError(f"No paid call {a.call_id}. Run 'shera calls <job>' to list them.")
     if call["state"] == "sent":
-        raise CmdError(f"Call {a.call_id} is 'sent' — its runner may still be live in the app. Wait for the job "
-                       "to pause or finish; only a '--force' takeover of a stuck job frees its sent calls.")
+        raise CmdError(f"Call {a.call_id} is 'sent' — a runner may still own it. Wait for the job to pause or "
+                       "finish; if the app is closed, restarting the app frees stuck calls (the app's Retry does "
+                       "the same). A stuck 'running' job can also be taken over with 'shera run <job> --force'.")
     if call["state"] != "indeterminate":
         raise CmdError(f"Call {a.call_id} is {call['state']}, not indeterminate; nothing to resolve.")
     ledger.resolve(a.call_id)

@@ -5,6 +5,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import httpx
 import pytest
 
 from shera import cli, config, db, ledger, media, pipeline, providers
@@ -274,6 +275,55 @@ def test_recover_leaves_web_draft_calls_alone(env, capsys):
     rc, out = run(capsys, "authorize", jid, "--yes")  # runs CLI recovery; job is not running
     assert rc == 0 and out["job"]["status"] == "done"
     assert db.one("SELECT state FROM paid_calls WHERE id=?", draft_id)["state"] == "sent"
+
+
+def test_budget_stop_pauses_with_hint(env, capsys):
+    src, vtt = env
+    _, out = run(capsys, "import", str(src), "--vtt", str(vtt))
+    jid = out["job"]["id"]
+    db.update_job(jid, authorized_usd=0.0001)  # too small for any call
+    rc, out = run(capsys, "run", jid)
+    assert rc == 0 and out["job"]["status"] == "paused"
+    assert "resolve stuck calls" in out["next"]
+    assert ledger.spent(jid) == 0  # stopped before the call, nothing billed
+
+
+MEETING = {"uuid": "/ab//cd==", "id": 111, "topic": "IELTS Writing", "start_time": "2026-09-20T10:00:00Z",
+           "duration": 150, "recording_files": [
+               {"id": "s", "file_type": "MP4", "recording_type": "shared_screen_with_speaker_view",
+                "file_size": 5000, "status": "completed", "download_url": "https://zoom.us/rec/download/s"},
+               {"id": "t", "file_type": "TRANSCRIPT", "recording_type": "audio_transcript",
+                "file_size": 11, "status": "completed", "download_url": "https://zoom.us/rec/download/t"}]}
+
+
+def test_zoom_import_from_cli(env, capsys, monkeypatch):
+    """The CLI Zoom path end to end against a fake Zoom: check, download, hash, job."""
+    from shera import zoom
+
+    class FakeZoom:
+        def __init__(self):
+            self.body = {"s": b"v" * 5000, "t": b"WEBVTT\n\nxyz"}
+
+        def __call__(self, req):
+            if req.url.host == "zoom.us" and req.url.path == "/oauth/token":
+                return httpx.Response(200, json={"access_token": "tok", "expires_in": 3600})
+            if req.url.host == "api.zoom.us" and req.url.path.endswith("/recordings"):
+                return httpx.Response(200, json=MEETING)
+            if req.url.host == "zoom.us" and req.url.path.startswith("/rec/download/"):
+                return httpx.Response(200, content=self.body[req.url.path.rsplit("/", 1)[1]])
+            return httpx.Response(404, json={"reason": "unexpected " + str(req.url)})
+
+    for k, v in (("ZOOM_ACCOUNT_ID", "acc"), ("ZOOM_CLIENT_ID", "cid"),
+                 ("ZOOM_CLIENT_SECRET", "sec"), ("ZOOM_USER", "me@example.com")):
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(zoom, "TRANSPORT", httpx.MockTransport(FakeZoom()))
+    rc, out = run(capsys, "zoom", "import", "/ab//cd==", "--video", "s", "--vtt", "t")
+    assert rc == 0
+    job = out["job"]
+    assert job["title"].startswith("IELTS Writing")
+    assert job["zoom"]["mp4"] == "s"
+    assert job["source_bytes"] == 5000 and len(job["source_sha256"]) == 64
+    assert job["stage"] == "authorize" and job["status"] == "waiting"  # Zoom's tiny VTT is unusable
 
 
 def test_zoom_list_requires_setup(env, capsys, monkeypatch):
