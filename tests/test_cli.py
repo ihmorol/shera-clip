@@ -1,19 +1,25 @@
 """CLI contract tests (D29): JSON on stdout, exit codes, and the human-approval boundary."""
 import json
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
-from shera import cli, config, db, media, pipeline, providers
+from shera import cli, config, db, ledger, media, pipeline, providers
 
 DUR = 300.0
 SENTENCE = "In Task 2 always answer the exact question and give one clear example"  # 14 words
 
 
 def vtt_text(n=60):
+    # mostly per-cue vocabulary, so windows are not "the same passage played again"
+    # (D26 repeat suppression would otherwise collapse the shortlist — by design)
+    skills = ("listening", "reading", "writing", "speaking")
     cues = [f"{i + 1}\n00:{i * 5 // 60:02d}:{i * 5 % 60:02d}.000 --> 00:{(i * 5 + 5) // 60:02d}:"
-            f"{(i * 5 + 5) % 60:02d}.000\nRimon Ahmed: {SENTENCE} {i}" for i in range(n)]
+            f"{(i * 5 + 5) % 60:02d}.000\n"
+            f"Rimon Ahmed: idea{i} shows method{i} using sheet{i} part{i} where band{i} improves "
+            f"when students {skills[i % 4]} daily {i}" for i in range(n)]
     return "WEBVTT\n\n" + "\n\n".join(cues) + "\n"
 
 
@@ -149,8 +155,127 @@ def test_data_flag_points_elsewhere(env, capsys, tmp_path):
     assert (tmp_path / "other" / "shera.sqlite3").exists()
 
 
+def test_data_flag_after_subcommand(env, capsys, tmp_path):
+    rc, out = run(capsys, "jobs", "--data", str(tmp_path / "after"))
+    assert rc == 0 and out["jobs"] == []
+    assert (tmp_path / "after" / "shera.sqlite3").exists()
+
+
+def test_wont_touch_a_job_marked_running(env, capsys):
+    src, vtt = env
+    _, out = run(capsys, "import", str(src), "--vtt", str(vtt))
+    jid = out["job"]["id"]
+    db.update_job(jid, status="running")  # as the app's runner threads would mark it
+    for argv in (("run", jid), ("authorize", jid, "--yes"), ("delete", jid, "--yes")):
+        rc, out = run(capsys, *argv)
+        assert rc == 1 and "marked running" in out["error"], argv
+    assert db.get_job(jid) is not None
+    rc, out = run(capsys, "run", jid, "--force")  # explicit takeover of a stuck job
+    assert rc == 0 and out["job"]["status"] == "waiting"
+    rc, out = run(capsys, "delete", jid, "--yes", "--force")
+    assert rc == 0 and db.get_job(jid) is None
+
+
+def test_failed_job_is_reported_not_crashed(env, capsys, monkeypatch):
+    """A job that dies mid-score leaves unscored candidates (NULL shortlisted/rank/score);
+    the CLI must still report the job instead of crashing on them."""
+    src, vtt = env
+    _, out = run(capsys, "import", str(src), "--vtt", str(vtt))
+    jid = out["job"]["id"]
+
+    def no_key(text, original=None):  # what providers do before any spend
+        raise ledger.ProviderError("OPENROUTER_API_KEY not set")
+
+    monkeypatch.setattr(providers, "jev_score", no_key)
+    rc, out = run(capsys, "authorize", jid, "--yes")
+    assert rc == 1
+    job = out["job"]  # the job record still comes back, with the failure inside it
+    assert job["status"] == "failed" and "OPENROUTER_API_KEY not set" in job["error"]
+    assert job["summary"]["candidates"] > 0 and job["summary"]["shortlisted"] == 0
+    rc, out = run(capsys, "job", jid)  # reading a failed job works
+    assert rc == 0 and "OPENROUTER_API_KEY not set" in out["job"]["error"]
+    rc, out = run(capsys, "candidates", jid, "--all")
+    assert rc == 0 and all(c["score"] is None for c in out["candidates"])
+    assert ledger.spent(jid) == 0  # the key check fires before any spend; the failed attempt costs nothing
+
+
 def test_zoom_list_requires_setup(env, capsys, monkeypatch):
     for k in ("ZOOM_ACCOUNT_ID", "ZOOM_CLIENT_ID", "ZOOM_CLIENT_SECRET", "ZOOM_USER"):
         monkeypatch.delenv(k, raising=False)
     rc, out = run(capsys, "zoom", "list")
     assert rc == 1 and out["ok"] is False and "ZOOM_ACCOUNT_ID" in out["error"]
+
+
+# ---------- real FFmpeg media: only the paid providers are faked ----------
+
+@pytest.fixture(scope="module")
+def real_class(tmp_path_factory):
+    """A real 200 s recording: test pattern video, continuous tone audio, VTT aligned to it."""
+    d = tmp_path_factory.mktemp("real")
+    src = d / "class.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error",
+         "-f", "lavfi", "-i", "testsrc2=s=1280x720:r=25:d=200",
+         "-f", "lavfi", "-i", "aevalsrc='0.4*sin(2*PI*440*t)':s=48000:d=200",
+         "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", str(src)],
+        check=True)
+    vtt = d / "class.vtt"
+    vtt.write_text(vtt_text(40), encoding="utf-8")
+    return src, vtt
+
+
+@pytest.fixture
+def real_env(real_class, tmp_path, monkeypatch):
+    config.set_data(tmp_path / "data")
+    db.init()
+    # product clip length is 60-90 s (D24); a few short windows keep the real renders quick
+    monkeypatch.setattr(config, "CLIP_MIN_S", 4)
+    monkeypatch.setattr(config, "CLIP_TARGET_S", 6)
+    monkeypatch.setattr(config, "CLIP_MAX_S", 10)
+
+    def jev(text, original=None):
+        n = int(text.split()[-1])
+        return {"value": 2 + n % 3, "clarity": 3, "opening": n % 5, "teacher": 0.9, "complete": 0.8,
+                "category": "exam_tip", "postable": 3,
+                "raw": {"value": {"type": "score", "score": 2 + n % 3}}}, 0.001
+
+    def draft(text, category, english=None):
+        t = {"title": "Task 2", "description": "d", "cta": "Follow for more"}
+        return {"facebook": t, "youtube": t}, 0.001
+
+    monkeypatch.setattr(providers, "jev_score", jev)
+    monkeypatch.setattr(providers, "draft_post", draft)
+    return real_class
+
+
+def test_real_media_end_to_end(real_env, capsys):
+    """Real probe, copy, silence detection, VTT alignment, windows, render, verify, export."""
+    src, vtt = real_env
+    rc, out = run(capsys, "import", str(src), "--vtt", str(vtt))
+    assert rc == 0
+    job = out["job"]
+    assert job["stage"] == "authorize" and job["status"] == "waiting"
+    assert job["duration"] == pytest.approx(200, abs=1)
+    assert job["source_sha256"] and len(job["source_sha256"]) == 64
+    assert job["estimate"]["transcription"] == 0.0  # the real VTT aligned, so no paid transcription
+    jid = job["id"]
+
+    rc, out = run(capsys, "authorize", jid, "--yes")
+    assert rc == 0 and out["job"]["status"] == "done" and out["job"]["stage"] == "review"
+
+    rc, out = run(capsys, "candidates", jid)
+    short = out["candidates"]
+    # 40 cues over 200 s: windows start every 30 s (stride), each 4-10 s, and all seven
+    # survive the shortlist because this fixture's cues do not repeat or overlap
+    assert len(out["candidates"]) == 7 and len(short) == 7
+    assert sorted(c["rank"] for c in short) == [1, 2, 3, 4, 5, 6, 7]  # the list is start order, rank is score order
+    top = next(c["id"] for c in short if c["rank"] == 1)
+
+    pipeline.render_preview(top)  # real portrait + landscape renders
+    db.update_review(top, status="approved")  # the one thing only a human may do
+    rc, out = run(capsys, "export", jid)
+    assert rc == 0 and len(out["clips"]) == 1 and out["clips"][0]["candidate_id"] == top
+    assert out["clips"][0]["problems"] == []  # real ffprobe verify: codecs, size, duration all hold
+    pkg = Path(out["folder"]) / out["clips"][0]["folder"]
+    assert (pkg / "portrait.mp4").stat().st_size > 10_000
+    assert (pkg / "captions.srt").read_text(encoding="utf-8").startswith("1\n")

@@ -4,7 +4,7 @@ The [PRD](PRD.md) is the product authority. This document defines observable pro
 
 ## Test seam
 
-Use the highest useful seam: an operator starts in the local browser, imports a real class, reviews candidates, approves clips, downloads a package, and checks private platform previews. Synthetic media and fake provider responses cover repeatable failures; real classes and authenticated provider calls establish the product claim. Store only sanitized fixture descriptions and evidence summaries in Git.
+Use the highest useful seam: an operator starts in the local browser or the `shera` CLI (D29), imports a real class, reviews candidates, approves clips in the review UI, downloads a package, and checks private platform previews. Synthetic media and fake provider responses cover repeatable failures; real classes and authenticated provider calls establish the product claim. Store only sanitized fixture descriptions and evidence summaries in Git.
 
 ## Gates
 

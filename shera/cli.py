@@ -6,7 +6,9 @@ there is no approve command, and paid calls need an explicit `authorize --yes` i
 same hard USD 1.50 cap as the web app (D11).
 """
 import argparse
+import contextlib
 import json
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -29,10 +31,19 @@ def _job_or_fail(job_id):
     return job
 
 
+def _not_running(a, job):
+    """pipeline._running only sees this process; the app's runner threads live in another one.
+    A 'running' row is therefore either the app working (wait) or a killed process's leftover (--force)."""
+    if job["status"] == "running" and not getattr(a, "force", False):
+        raise CmdError(f"Job {job['id']} is marked running, probably in the app. Wait for it to pause or finish. "
+                       "If the app is closed and the job is stuck from a killed process, re-run with --force.")
+
+
 def _detail(job):
     cands = db.candidates(job["id"])
     out = dict(job)
-    out["summary"] = {"candidates": len(cands), "shortlisted": sum(c["shortlisted"] for c in cands),
+    # candidates of a failed or partial job are unscored: shortlisted/rank/score can all be NULL
+    out["summary"] = {"candidates": len(cands), "shortlisted": sum(1 for c in cands if c["shortlisted"]),
                       "approved": db.one("SELECT COUNT(*) AS n FROM reviews WHERE status='approved' AND "
                                          "candidate_id IN (SELECT id FROM candidates WHERE job_id=?)",
                                          job["id"])["n"],
@@ -81,7 +92,8 @@ def cmd_import(a):
 
 
 def cmd_run(a):
-    _job_or_fail(a.job_id)
+    job = _job_or_fail(a.job_id)
+    _not_running(a, job)
     pipeline.recover()
     pipeline.resume(a.job_id)
     return _report(a.job_id)
@@ -89,6 +101,7 @@ def cmd_run(a):
 
 def cmd_authorize(a):
     job = _job_or_fail(a.job_id)
+    _not_running(a, job)
     if job["authorized_usd"] is None and not (job["stage"] == "authorize" and job["status"] == "waiting"):
         raise CmdError(f"Job {a.job_id} is not waiting for authorization "
                        f"(stage {job['stage']}, status {job['status']}).")
@@ -155,6 +168,7 @@ def cmd_export(a):
 
 def cmd_delete(a):
     job = _job_or_fail(a.job_id)
+    _not_running(a, job)
     if not a.yes:
         _out({"ok": True, "job_id": a.job_id, "title": job["title"],
               "next": "re-run with --yes to permanently delete the job, its media and its exports"})
@@ -207,11 +221,13 @@ def build_parser():
 
     r = sub.add_parser("run", help="resume a paused or failed job and wait for it")
     r.add_argument("job_id")
+    r.add_argument("--force", action="store_true", help="run even when the job is marked running elsewhere")
     r.set_defaults(func=cmd_run)
 
     az = sub.add_parser("authorize", help="show the cost estimate; --yes authorizes paid calls up to the hard cap")
     az.add_argument("job_id")
     az.add_argument("--yes", action="store_true")
+    az.add_argument("--force", action="store_true", help="authorize even when the job is marked running elsewhere")
     az.set_defaults(func=cmd_authorize)
 
     c = sub.add_parser("candidates", help="list the ranked candidates (the shortlist unless --all)")
@@ -235,19 +251,28 @@ def build_parser():
     d = sub.add_parser("delete", help="delete a job, its media and its exports; --yes required")
     d.add_argument("job_id")
     d.add_argument("--yes", action="store_true")
+    d.add_argument("--force", action="store_true", help="delete even when the job is marked running elsewhere")
     d.set_defaults(func=cmd_delete)
 
     z = sub.add_parser("zoom", help="Zoom cloud recordings (read-only)")
     zsub = z.add_subparsers(dest="zoom_command", required=True)
     zl = zsub.add_parser("list", help="list the host's recordings, newest first")
     zl.add_argument("--to", help="month ending at this date, YYYY-MM-DD (default: today)")
+    zl.add_argument("--data", default=argparse.SUPPRESS,
+                    help="data directory (default: $SHERA_DATA or ./data beside the app)")
     zl.set_defaults(func=cmd_zoom_list)
     zi = zsub.add_parser("import", help="import one cloud recording by file ids from 'zoom list'")
     zi.add_argument("uuid")
     zi.add_argument("--video", required=True, help="the MP4 file id")
     zi.add_argument("--vtt", help="the transcript file id, when Zoom has one")
     zi.add_argument("--audio", help="the separate Zoom audio (.m4a) file id")
+    zi.add_argument("--data", default=argparse.SUPPRESS,
+                    help="data directory (default: $SHERA_DATA or ./data beside the app)")
     zi.set_defaults(func=cmd_zoom_import)
+
+    for sp in sub.choices.values():  # a global flag must also work after the subcommand
+        sp.add_argument("--data", default=argparse.SUPPRESS,  # absent beats None, so it never
+                        help="data directory (default: $SHERA_DATA or ./data beside the app)")  # clobbers the global one
     return p
 
 
@@ -255,6 +280,10 @@ def main(argv=None):
     a = build_parser().parse_args(argv)
     if a.data:
         config.set_data(a.data)
+    # Bangla clip text must survive pipes and redirection, which Windows does not default to UTF-8
+    for stream in (sys.stdout, sys.stderr):
+        with contextlib.suppress(AttributeError):
+            stream.reconfigure(encoding="utf-8")
     db.init()
     pipeline.inline = True
     try:
