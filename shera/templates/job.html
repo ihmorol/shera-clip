@@ -38,7 +38,7 @@
       <tr><th scope="row">Transcribe the audio <span class="muted">({{ stt_model }})</span></th><td class="num">{{ est.transcription|usd }}</td></tr>
       <tr><th scope="row">Translate the Bangla into English <span class="muted">({{ translate_model }})</span></th><td class="num">{{ est.translation|usd }}</td></tr>
       <tr><th scope="row">Ask Jev about {{ est.windows }} possible 60–90 s clips</th><td class="num">{{ est.ranking|usd }}</td></tr>
-      <tr><th scope="row">Draft posting text for up to 10 clips</th><td class="num">{{ est.drafts|usd }}</td></tr>
+      <tr><th scope="row">Draft posting text for every suggested clip <span class="muted">(estimated at ten)</span></th><td class="num">{{ est.drafts|usd }}</td></tr>
       <tr class="total"><th scope="row">Estimate</th><td class="num">{{ (est.transcription + est.translation + est.ranking + est.drafts)|usd }}</td></tr>
       </tbody>
     </table>

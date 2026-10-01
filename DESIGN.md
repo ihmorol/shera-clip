@@ -14,6 +14,7 @@ colors:
   ink-3: "#7e7e90"
   mask: "#5e53dd"
   mask-hi: "#6c61e8"
+  mask-text: "#8277f2"
   mask-lo: "#4a3fc4"
   mask-ink: "#ffffff"
   mask-wash: "rgba(108, 97, 232, .14)"
@@ -207,7 +208,7 @@ The app runs on the operator's laptop and uses system fonts only. The font stack
 A near-black stage under lavender-white ink. Screen-light violet is the only accent, and a small set of theatre signal colours (signal blue, grease-pencil yellow, safety red, run violet) carries state.
 
 ### Primary
-- **Screen-light Violet** (`mask`): primary buttons, the current step frame, focus outlines, text selection, caret, form accents, links (`mask-text`), the reel mark in the header. `mask-hi` is the hover step and `mask-lo` the pressed step; `mask-hi` is a fill, never ink — violet text uses `mask-text` (#8277f2, 5.0–5.4:1 on panel, well, and the in-clip wash). Text on the mask is always `mask-ink`, pure white (5.6:1 on `mask`, 4.6:1 on the `mask-hi` hover).
+- **Screen-light Violet** (`mask`): primary buttons, the current step frame, focus outlines, text selection, caret, form accents, links (`mask-text`), the reel mark in the header. `mask-hi` is the hover step and `mask-lo` the pressed step; `mask-hi` is a fill, never ink — violet text uses `mask-text` (#8277f2, 4.7–5.4:1 on panel, well, raised, and the in-clip wash). Text on the mask is always `mask-ink`, pure white (5.6:1 on `mask`, 4.6:1 on the `mask-hi` hover).
 
 ### Secondary (state signals)
 - **Signal Blue** (`leader`): approved and done. Used for the Approve button fill, approved badges, and completed step frames.

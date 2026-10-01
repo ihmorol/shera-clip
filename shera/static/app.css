@@ -12,7 +12,7 @@
   --ink-2: #a9a9b8;
   --ink-3: #7e7e90;
   --mask: #5e53dd;          /* screen-light violet: actions and the current step only */
-  --mask-hi: #6c61e8;    /* fills only: too dark for text — text uses --mask-text */
+  --mask-hi: #6c61e8;    /* fills only: too dark for text — ink uses --mask-text (4.7-5.4:1 on panel, well, raised, wash) */
   --mask-text: #8277f2;   /* violet as ink: 5.0-5.4:1 on panel, well, and the in-clip wash */
   --mask-lo: #4a3fc4;
   --mask-ink: #ffffff;
@@ -285,7 +285,7 @@ details > summary:hover { color: var(--mask-text); }
 .others .shot-gate:hover img, .others .shot-gate:focus-visible img { filter: none; }
 .shot-body h3 { margin: 0; font-size: 1.02rem; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .shot-body h3 a { color: var(--ink); text-decoration: none; }
-.shot-body h3 a:hover { color: var(--mask-hi); }
+.shot-body h3 a:hover { color: var(--mask-text); }
 .shot-body .why { margin: 0; font-size: .84rem; color: var(--ink-2); }
 .shot-foot { margin: auto 0 0; padding-top: .35rem; display: flex; justify-content: space-between; align-items: center; gap: .5rem; font-size: .8rem; }
 .en { display: block; margin-top: .15rem; font-size: .86em; color: var(--run); opacity: .9; }
