@@ -33,10 +33,9 @@ if (-not $ok) {
     Write-Host "Python 3.12+ not found."
     if (Need-Winget) {
         try { winget install --id Python.Python.3.13 -e --accept-source-agreements --accept-package-agreements } catch {}
-        if ($LASTEXITCODE -ne 0) { Write-Host "winget could not install Python ($LASTEXITCODE). Install Python 3.12+ from python.org, then re-run." -ForegroundColor Yellow; exit 1 }
         Refresh-Path
         $py = Get-Command python -ErrorAction SilentlyContinue
-        if (-not $py) { Write-Host "Python installed but not on PATH yet. Reopen the terminal and re-run this installer." -ForegroundColor Yellow; exit 1 }
+        if (-not $py) { Write-Host "Python did not land on PATH (winget exit $LASTEXITCODE). Install Python 3.12+ from python.org, then re-run." -ForegroundColor Yellow; exit 1 }
     } else { exit 1 }
 }
 
