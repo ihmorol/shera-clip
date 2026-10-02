@@ -16,6 +16,18 @@ The analyses in `plans/` and the earlier MVP v2 plan are historical references. 
 
 **Phase-1 working prototype: local MP4/VTT import (D15).** Phase 2 adds Zoom cloud-recording import; it is tested against a simulated Zoom only until the read-only Zoom app exists ([#2](https://github.com/ihmorol/shera-clip/issues/2)). Nothing here is publish-ready until the gates in [acceptance](docs/acceptance.md) pass on real classes. Zoom credentials, consent-cleared class samples, and brand assets are still implementation inputs; their absence does not authorize anyone to fabricate evidence.
 
+## Three versions, one server (D29, D30, D34)
+
+Shera Clip is three surfaces over the same local server and data — pick whichever fits the moment:
+
+- **Web** — `python -m shera` (or the Start-menu shortcut) opens the review UI in your browser.
+- **Desktop** — `shera desktop` opens the same UI in a native window.
+- **CLI** — `shera --help` drives the machine stages with JSON output.
+
+## Install with one command (D34)
+
+Double-click **`install.bat`** (Windows) or run **`./scripts/install.sh`** (macOS/Linux). The installer sets up Python 3.12+ and FFmpeg if they are missing (with your consent), creates the virtualenv, installs the app with the desktop extra, adds Start-menu shortcuts, and finishes with a `shera doctor` checklist that names anything still missing and its exact fix. Re-run it any time; it is safe to repeat.
+
 ## Run it
 
 Requirements:
@@ -48,7 +60,7 @@ shera export <job-id>                    # package approved clips into data/expo
 shera zoom list                          # cloud recordings, when the ZOOM_* values are set
 ```
 
-`shera --help` lists every command (`job`, `run`, `calls`, `resolve`, `delete`, `zoom import`, ...). Every valid command prints one JSON object; a failure — including a usage error — exits 1 with the error named in the JSON (`--help` prints plain text). The CLI has no approve/reject command: approval stays a human act in the review UI. Pass `--data` (or set `SHERA_DATA`) to point a run at a different data folder.
+`shera --help` lists every command (`job`, `run`, `calls`, `resolve`, `delete`, `zoom import`, ...). Every valid command prints one JSON object; a failure — including a usage error — exits 1 with the error named in the JSON (`--help` and `doctor` print human text; `doctor --json` emits JSON). The CLI has no approve/reject command: approval stays a human act in the review UI. Pass `--data` (or set `SHERA_DATA`) to point a run at a different data folder.
 
 ## Desktop window (D30)
 

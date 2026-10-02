@@ -242,6 +242,12 @@ def cmd_desktop(a):
     return 0
 
 
+def cmd_doctor(a):
+    """D34: check the environment for the three surfaces and name every fix."""
+    from shera import doctor
+    return doctor.run(json_mode=a.json)
+
+
 def build_parser():
     p = _Parser(prog="shera", description="Shera Clip CLI: the machine stages with JSON output. "
                                            "Clip approval stays in the review UI (D29).")
@@ -293,6 +299,10 @@ def build_parser():
 
     dsk = sub.add_parser("desktop", help="open the review UI in a desktop window (needs the [desktop] extra)")
     dsk.set_defaults(func=cmd_desktop)
+
+    dct = sub.add_parser("doctor", help="check the setup for the web, CLI, and desktop surfaces; names every fix")
+    dct.add_argument("--json", action="store_true", help="emit the checklist as JSON instead of text")
+    dct.set_defaults(func=cmd_doctor)
 
     d = sub.add_parser("delete", help="delete a job, its media and its exports; --yes required")
     d.add_argument("job_id")
