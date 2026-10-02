@@ -2,11 +2,13 @@
 import contextlib
 import hashlib
 import json
+import os
 import re
 import shutil
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from shera import candidates as cand
@@ -127,6 +129,11 @@ def _import(job_id):
         _download(job_id, job, d)
         job = db.get_job(job_id)
     if not job["source_sha256"] or not src.exists():
+        need = Path(job["source_path"]).stat().st_size  # the copy and its transcript/audio extras together
+        for extra in (job["vtt_path"], job["audio_path"]):
+            if extra:
+                need += Path(extra).stat().st_size
+        media.ensure_free(need)
         sha, n = media.copy_with_hash(Path(job["source_path"]), src, lambda f: db.update_job(job_id, progress=f))
         db.update_job(job_id, source_sha256=sha, source_bytes=n)
     if job["vtt_path"] and not (d / "source.vtt").exists():
@@ -181,7 +188,21 @@ def _speech(job_id):
     path = job_dir(job_id) / "speech.json"
     if not path.exists():
         _write(path, media.speech_intervals(media_path(job_id)))
+    _peaks(job_id)
     return [tuple(x) for x in _read(path)]
+
+
+def _peaks(job_id):
+    """Cache the review waveform's peaks once per job, only when the media has an audio stream.
+    A decode failure leaves the strip absent rather than failing the class: the review page
+    simply hides the waveform, and the operator can still work from the transcript."""
+    d = job_dir(job_id)
+    if (d / "peaks.json").exists() or not media.probe(media_path(job_id))["has_audio"]:
+        return
+    try:
+        _write(d / "peaks.json", media.peaks(media_path(job_id)))
+    except (RuntimeError, OSError):
+        pass
 
 
 def check_audible(speech, duration):
@@ -381,6 +402,37 @@ def _prepare(job_id):
         if drafts_open(rv["drafts"]) and not in_flight:  # an in-flight web draft task owns that call
             draft(c["id"])
         db.update_job(job_id, progress=(n + 1) / len(short))
+    _stills(job_id)
+
+
+def make_frame(job_id, c):
+    """The candidate's contact-sheet still (a few seconds in, 480 px wide), made once and then cached;
+    the review-page frame endpoint serves exactly this file as its on-demand fallback."""
+    out = job_dir(job_id) / "frames" / f"{c['id']}-{c['start']:.1f}.jpg"
+    if not out.exists():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        media.thumbnail(media_path(job_id), out, c["start"] + min(6.0, (c["end"] - c["start"]) / 3), width=480)
+    return out
+
+
+def _stills(job_id):
+    """Pre-generate every candidate's still so the class page never runs ffmpeg inside a request thread.
+    A three-hour class yields hundreds of candidates and each seek costs a few hundred ms, so they
+    run concurrently: serial generation held the prepare stage (and the operator) for over a minute.
+    Unreadable media is skipped, and the frame endpoint reports "No frame" for that clip instead."""
+    cs = db.candidates(job_id)
+    if not cs:
+        return
+    with ThreadPoolExecutor(max_workers=min(8, (os.cpu_count() or 2))) as pool:
+        list(pool.map(lambda c: _safe_frame(job_id, c), cs))
+
+
+def _safe_frame(job_id, c):
+    try:
+        make_frame(job_id, c)
+    except (RuntimeError, OSError):
+        pass  # unreadable media: the endpoint reports "No frame" per clip instead
+    return None
 
 
 def redo(job_id):
@@ -394,7 +446,7 @@ def redo(job_id):
     db.x("DELETE FROM reviews WHERE candidate_id IN (SELECT id FROM candidates WHERE job_id=?)", job_id)
     db.x("DELETE FROM candidates WHERE job_id=?", job_id)
     (d / "transcript.json").unlink(missing_ok=True)
-    for sub in (d / "audio", d / "previews", config.DATA / "exports" / job_id):
+    for sub in (d / "audio", d / "previews", d / "frames", config.DATA / "exports" / job_id):
         shutil.rmtree(sub, ignore_errors=True)
     keep = [f for f in db.get_job(job_id)["flags"] if f.startswith("Zoom audio")]
     db.update_job(job_id, authorized_usd=None, estimate_usd=None, transcript_source=None,

@@ -163,6 +163,7 @@ def test_zoom_page_explains_setup_when_unconfigured(client, monkeypatch):
 def test_zoom_page_lists_occurrences_and_shows_errors(client, fake):
     r = client.get("/zoom", params={"to": "2026-09-27"})
     assert "IELTS Writing" in r.text and "Shared screen with speaker" in r.text and "still processing" in r.text
+    assert "Needs about 4.9 KB free" in r.text  # the preferred video plus the transcript (5000 + 7); the .m4a is unticked by default
     assert 'href="/zoom?to=2026-08-27"' in r.text  # earlier month
     fake.reject = 5
     assert "authorization" in client.get("/zoom", params={"to": "2026-09-27"}).text

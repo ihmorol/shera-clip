@@ -70,7 +70,11 @@ async def guard(request: Request, call_next):
         src = origin if origin is not None else request.headers.get("referer")
         if src is not None and urlsplit(src).netloc not in _allowed_hosts():
             return PlainTextResponse("Cross-origin request refused", status_code=403)
-    return await call_next(request)
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        # upgrades must show up on the next reload, not after a browser heuristic cache expires
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 # ---------- helpers ----------
@@ -125,15 +129,7 @@ def fmt_time(s):
     return f"{int(s // 3600)}:{int(s // 60 % 60):02d}:{s % 60:04.1f}"
 
 
-def fmt_bytes(n):
-    n = float(n or 0)
-    for unit in ("B", "KB", "MB", "GB"):
-        if n < 1024 or unit == "GB":
-            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
-        n /= 1024
-
-
-templates.env.filters.update(t=fmt_time, bytes=fmt_bytes, usd=lambda v: f"${float(v or 0):.4f}")
+templates.env.filters.update(t=fmt_time, bytes=media.fmt_bytes, usd=lambda v: f"${float(v or 0):.4f}")
 templates.env.globals.update(CATEGORIES=CATEGORIES, CAP=config.CAP_USD, STAGES=STAGES,
                              STAGE_LABELS=STAGE_LABELS, STATUS_LABELS=STATUS_LABELS, zoom_time=zoom.local_time)
 
@@ -417,6 +413,16 @@ def job_page(request: Request, job_id: str):
     return _job_page(request, job_id)
 
 
+@app.get("/jobs/{job_id}/peaks.json")
+def job_peaks(job_id: str):
+    """Cached waveform peaks for the review page; the browser hides the strip when this is absent."""
+    _job_or_404(job_id)  # job ids come from the DB, so a bare .. cannot walk out of the job folder
+    p = pipeline.job_dir(job_id) / "peaks.json"
+    if not p.exists():
+        raise HTTPException(404, "No waveform peaks for this class yet")
+    return FileResponse(p, headers={"Cache-Control": "max-age=86400"})
+
+
 @app.post("/jobs/{job_id}/authorize")
 def authorize(job_id: str):
     job = _job_or_404(job_id)
@@ -605,15 +611,13 @@ def reset_captions(job_id: str, cid: int):
 
 @app.get("/jobs/{job_id}/clips/{cid}/frame.jpg")
 def clip_frame(job_id: str, cid: int):
-    """A small still from a few seconds into the clip, for the contact sheet (made once, then cached)."""
+    """A small still from a few seconds into the clip, for the contact sheet (made by _prepare, then cached)."""
     _job_or_404(job_id)
     c = _clip_or_404(job_id, cid)
-    out = pipeline.job_dir(job_id) / "frames" / f"{cid}-{c['start']:.1f}.jpg"
-    if not out.exists():
-        try:
-            media.thumbnail(pipeline.media_path(job_id), out, c["start"] + min(6.0, (c["end"] - c["start"]) / 3), width=480)
-        except RuntimeError:
-            raise HTTPException(404, "No frame")
+    try:
+        out = pipeline.make_frame(job_id, c)
+    except RuntimeError:
+        raise HTTPException(404, "No frame")
     return FileResponse(out, headers={"Cache-Control": "max-age=86400"})
 
 

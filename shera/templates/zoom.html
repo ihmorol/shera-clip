@@ -32,6 +32,7 @@
       {% else %}<p class="muted">No Zoom transcript: the audio will be transcribed for a few cents.</p>{% endif %}
       {% if o.m4a %}<p><label><input type="checkbox" name="m4a" value="{{ o.m4a.id }}"> Use Zoom's separate audio (.m4a) instead of the video's sound</label></p>{% endif %}
       {% if o.processing %}<p class="muted">Zoom is still processing {{ o.processing }} more file{{ 's' if o.processing > 1 }} of this recording.</p>{% endif %}
+      {% if o.need %}<p class="muted">Needs about {{ o.need|bytes }} free on this laptop; the space is checked again before downloading.</p>{% endif %}
       <p><button type="submit" class="primary">Import this class</button></p>
       {% elif o.processing %}<p class="muted">Zoom is still processing this recording. Refresh in a few minutes.</p>
       {% else %}<p class="muted">This recording has no video file.</p>{% endif %}

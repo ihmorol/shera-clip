@@ -3,6 +3,7 @@
 {% block crumbs %}<a href="/">Classes</a><span aria-hidden="true">/</span><a href="/jobs/{{ job.id }}">{{ job.title }}</a><span aria-hidden="true">/</span><span>{{ 'Clip ' ~ c.rank if c.rank else 'Moment' }} · {{ c.start|t }}</span>{% endblock %}
 {% block main %}
 <div class="review" id="review" data-base="/jobs/{{ job.id }}/clips/{{ c.id }}"
+     data-peaks="/jobs/{{ job.id }}/peaks.json"
      data-prev="{{ '/jobs/%s/clips/%s'|format(job.id, prev) if prev else '' }}" data-next="{{ '/jobs/%s/clips/%s'|format(job.id, next) if next else '' }}">
 <div class="col work">
   <section class="panel" aria-labelledby="src-h">
@@ -14,6 +15,7 @@
       </nav>
     </div>
     <video id="source" src="{{ source_url }}" controls preload="metadata"></video>
+    <canvas id="waveform" class="waveform" role="img" hidden aria-label="Loudness waveform of the class; click or drag to move the playhead"></canvas>
     <p class="tools"><button type="button" id="play-span"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Play this clip</button>
       <span class="muted">Click a line to hear it. Highlighted lines are inside the clip; the English under a line is its translation.</span></p>
     <ol class="transcript" id="transcript" aria-label="Transcript around this clip">

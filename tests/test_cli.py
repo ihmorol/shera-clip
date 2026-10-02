@@ -43,8 +43,9 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(media, "probe", lambda p: {"duration": DUR, "width": 1920, "height": 1080, "vcodec": "h264",
                                                    "acodec": "aac", "v_start": 0, "a_start": 0, "has_audio": True})
     monkeypatch.setattr(media, "speech_intervals", lambda p: [(0.0, DUR)])
+    monkeypatch.setattr(media, "peaks", lambda p, buckets=2000: [10] * buckets)
     monkeypatch.setattr(media, "render", lambda *a, **k: a[6].write_bytes(b"mp4"))
-    monkeypatch.setattr(media, "thumbnail", lambda v, out, at: out.write_bytes(b"jpg"))
+    monkeypatch.setattr(media, "thumbnail", lambda v, out, at, width=None: out.write_bytes(b"jpg"))
     monkeypatch.setattr(media, "verify", lambda p, d, size=None: [])
 
     def jev(text, original=None):

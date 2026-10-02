@@ -67,9 +67,46 @@ def test_copy_with_hash(main, tmp_path):
     assert seen and seen[-1] == 1.0
 
 
+def test_ensure_free_names_the_disk_and_the_fix(monkeypatch):
+    from collections import namedtuple
+    usage = namedtuple("usage", "total used free")
+    monkeypatch.setattr(media.shutil, "disk_usage", lambda p: usage(0, 0, int(0.8 * 2**30)))
+    with pytest.raises(ValueError, match="Needs 3.2 GB free, only 819.2 MB on this disk.*SHERA_DATA"):
+        media.ensure_free(3.2 * 2**30)
+    monkeypatch.setattr(media.shutil, "disk_usage", lambda p: usage(0, 0, 4 * 2**30))
+    media.ensure_free(3.2 * 2**30)  # enough room: no raise
+
+
+def test_ensure_free_scales_the_unit_to_the_shortfall(monkeypatch):
+    """A kilobyte-sized transcript must not report a useless '0.0 GB' shortfall to the operator."""
+    from collections import namedtuple
+    usage = namedtuple("usage", "total used free")
+    monkeypatch.setattr(media.shutil, "disk_usage", lambda p: usage(0, 0, 1024))
+    with pytest.raises(ValueError, match=r"Needs 5\.0 KB free, only 1\.0 KB on this disk"):
+        media.ensure_free(5 * 1024)
+
+
 def test_speech_intervals(main, vfr):
     _close(media.speech_intervals(main), MAIN_TONES)
     _close(media.speech_intervals(vfr), VFR_TONES)   # zero-based despite the 3 s stream start
+
+
+def test_peaks_follow_the_tones(main):
+    p = media.peaks(main)
+    assert len(p) == 2000 and all(isinstance(v, int) and 0 <= v <= 32768 for v in p)
+    at = lambda t: p[int(t * 2000 / 60)]  # 2000 buckets over 60 s
+    assert all(at(t) > 10000 for t in (4, 14, 27, 39, 52))   # mid-tone in each of the five spans
+    assert all(at(t) < 500 for t in (8, 20, 34, 45, 59.5))   # the silent gaps between them
+    assert len(media.peaks(main, buckets=50)) == 50 and max(media.peaks(main, buckets=50)) > 10000
+
+
+def test_peaks_refuses_to_fabricate_a_silent_strip(tmp_path):
+    """No decodable audio must raise, never return 2000 zeros the reviewer would read as silence."""
+    silent = tmp_path / "silent.mp4"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=320x240:d=2",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", str(silent)], check=True)
+    with pytest.raises(RuntimeError):
+        media.peaks(silent)
 
 
 def test_audio_chunks(main, tmp_path):

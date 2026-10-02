@@ -10,11 +10,17 @@ from shera import cli, config, doctor
 
 @pytest.fixture
 def env(tmp_path, monkeypatch):
+    saved = {name: getattr(config, name) for name in ("DATA", "INBOX", "JOBS", "DB_PATH")}
     config.set_data(tmp_path / "data")
-    for k in ("OPENROUTER_API_KEY", "ZOOM_ACCOUNT_ID", "ZOOM_CLIENT_ID", "ZOOM_CLIENT_SECRET", "ZOOM_USER"):
-        monkeypatch.delenv(k, raising=False)
-    monkeypatch.setattr(doctor.shutil, "which", lambda name: f"C:/bin/{name}.exe")
-    monkeypatch.setattr(doctor, "_font_missing", lambda: False)
+    try:
+        for k in ("OPENROUTER_API_KEY", "ZOOM_ACCOUNT_ID", "ZOOM_CLIENT_ID", "ZOOM_CLIENT_SECRET", "ZOOM_USER"):
+            monkeypatch.delenv(k, raising=False)
+        monkeypatch.setattr(doctor.shutil, "which", lambda name: f"C:/bin/{name}.exe")
+        monkeypatch.setattr(doctor, "_font_missing", lambda: False)
+        yield
+    finally:
+        for name, value in saved.items():  # the doctor must not leave its temp data paths behind
+            setattr(config, name, value)
 
 
 def test_ready_install_passes_with_optional_notes(env, capsys):

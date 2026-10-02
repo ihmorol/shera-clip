@@ -33,6 +33,53 @@ $("cap-add").addEventListener("click", () => {
   $("cap-rows").lastElementChild.querySelector(".c-text").focus();
 });
 
+// ---- waveform: loudness strip under the source, the clip's span tinted violet, click/drag to seek ----
+const wave = $("waveform"), wctx = wave.getContext("2d");
+let peaks = null, bars = null; // bars: offscreen render of the peaks and span, replayed with the playhead
+const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+function paintWave() {
+  if (!peaks) return;
+  const dpr = devicePixelRatio || 1;
+  const w = wave.width = Math.round(wave.clientWidth * dpr), h = wave.height = Math.round(wave.clientHeight * dpr);
+  bars = document.createElement("canvas");
+  bars.width = w; bars.height = h;
+  const c = bars.getContext("2d"), dur = src.duration || 1, t = (s) => Math.max(0, Math.min(w, s / dur * w));
+  const bw = w / peaks.length;
+  c.fillStyle = cssVar("--ink-3");
+  for (let i = 0; i < peaks.length; i++) {
+    const bh = Math.max(dpr, peaks[i] / 32768 * (h - 4)); // centred mirrored bars, one per bucket
+    c.fillRect(Math.floor(i * bw), (h - bh) / 2, Math.max(1, Math.ceil(bw)), bh);
+  }
+  c.globalAlpha = .35; c.fillStyle = cssVar("--mask");  // the clip's own [start, end] window
+  c.fillRect(t(val("start")), 0, t(val("end")) - t(val("start")), h);
+  drawWaveHead();
+}
+function drawWaveHead() {
+  if (!bars) return;
+  wctx.clearRect(0, 0, wave.width, wave.height);
+  wctx.drawImage(bars, 0, 0);
+  const x = Math.round(src.currentTime / (src.duration || 1) * wave.width);
+  wctx.fillStyle = cssVar("--mask-hi");
+  wctx.fillRect(x, 0, Math.max(1, Math.round(devicePixelRatio || 1)), wave.height);
+}
+fetch(root.dataset.peaks).then((r) => { if (!r.ok) throw 0; return r.json(); }).then((p) => {
+  peaks = p;
+  wave.hidden = false;
+  paintWave();
+}).catch(() => {});  // no peaks file (no audio stream): the strip simply stays hidden
+src.addEventListener("loadedmetadata", paintWave);  // duration arrives after the first paint
+src.addEventListener("timeupdate", drawWaveHead);
+window.addEventListener("resize", paintWave);
+const seekAt = (e) => {
+  const r = wave.getBoundingClientRect();
+  src.currentTime = (e.clientX - r.left) / r.width * (src.duration || 0);
+};
+let seeking = false;
+wave.addEventListener("pointerdown", (e) => { seeking = true; wave.setPointerCapture(e.pointerId); seekAt(e); });
+wave.addEventListener("pointermove", (e) => { if (seeking) seekAt(e); });
+wave.addEventListener("pointerup", () => { seeking = false; });
+
 // ---- span, transcript, duration ----
 function refreshSpan() {
   const s = val("start"), e = val("end"), d = e - s;
@@ -45,6 +92,7 @@ function refreshSpan() {
   for (const b of document.querySelectorAll(".unit")) {
     b.classList.toggle("in", parseFloat(b.dataset.end) > s && parseFloat(b.dataset.start) < e);
   }
+  paintWave();
 }
 for (const b of document.querySelectorAll(".unit")) {
   b.addEventListener("click", () => { src.currentTime = parseFloat(b.dataset.start); src.play(); });

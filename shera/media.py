@@ -7,12 +7,15 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+
+from shera import config
 
 W, H, FPS = 1080, 1920, 30
 TITLE_H = 200            # top band reserved for the title in crop mode
@@ -78,6 +81,27 @@ def copy_with_hash(src, dst, on_progress=None):
     return h.hexdigest(), n
 
 
+def fmt_bytes(n):
+    """A size an operator can act on: the unit follows the magnitude, so a small
+    shortfall never reads as a useless '0.0 GB'."""
+    n = float(n or 0)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+
+
+def ensure_free(needed_bytes):
+    """Raise before a big copy or download when the data disk cannot hold it; SHERA_DATA names the drive to change."""
+    p = Path(config.JOBS)
+    while not p.exists():
+        p = p.parent  # a fresh data dir: the drive is what matters, not the missing folder
+    free = shutil.disk_usage(p).free
+    if free < needed_bytes:
+        raise ValueError(f"Needs {fmt_bytes(needed_bytes)} free, only {fmt_bytes(free)} on this disk. "
+                         "Free space or pick another drive (SHERA_DATA).")
+
+
 def speech_intervals(path):
     """Non-silent (s, e) intervals: silencedetect on the first audio stream, inverted over duration."""
     dur = probe(path)["duration"]
@@ -100,6 +124,23 @@ def speech_intervals(path):
     if dur - cur > 0.05:
         speech.append((round(cur, 3), round(dur, 3)))
     return speech
+
+
+def peaks(path, buckets=2000):
+    """Per-bucket peak amplitude (0..32768) of the first audio stream across the whole file,
+    for the review waveform: the same 4 kHz mono s16le decode _envelope uses, whole file at once.
+    Raises when ffmpeg produced no samples, so a caller never caches a flat strip that would
+    read to the operator as a silent class."""
+    r = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-map", "0:a:0", "-ac", "1",
+                        "-ar", "4000", "-f", "s16le", "-"], capture_output=True)  # binary stdout, so not _run()
+    if r.returncode:
+        raise RuntimeError(f"ffmpeg failed ({r.returncode}): {r.stderr[-2000:].decode('utf-8', 'replace')}")
+    x = np.frombuffer(r.stdout, np.int16)
+    if not len(x):
+        raise RuntimeError("No audio could be decoded for the waveform")
+    edges = np.linspace(0, len(x), buckets + 1).round().astype(int)
+    # abs() per bucket in int32: a bucket's peak, without a second full-length copy of the signal
+    return [int(np.abs(x[a:b]).max()) if b > a else 0 for a, b in zip(edges, edges[1:])]
 
 
 def _clock(created):
