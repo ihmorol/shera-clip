@@ -316,6 +316,14 @@ def test_posting_record_refuses_a_non_http_scheme(client):
     assert _posting_record(cid) == {}
 
 
+def test_posting_record_refuses_a_link_broken_by_a_space(client):
+    """A pasted address with a stray space must not be silently cut into a different, valid host."""
+    job_id, cid = make_job()
+    r = client.post(f"/jobs/{job_id}/clips/{cid}/posted", data={"youtube_url": "http://exa mple.com"})
+    assert "space in it" in r.text
+    assert _posting_record(cid) == {}
+
+
 def test_a_bad_second_link_does_not_wipe_the_saved_first(client):
     job_id, cid = make_job()
     client.post(f"/jobs/{job_id}/clips/{cid}/posted", data={"facebook_url": "https://facebook.com/x/posts/1"})

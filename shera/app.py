@@ -110,9 +110,16 @@ def _post_url(raw, label):
     s = (raw or "").strip()
     if not s:
         return ""
-    m = re.search(r"https?://[^\s<>\"']+", s)  # also covers a link wrapped in the caption they copied
-    if m:
-        s = m.group(0).rstrip(".,;)]}")
+    if re.match(r"https?://", s, re.I):
+        # The operator pasted the link itself: it must be one unbroken address, otherwise
+        # "http://exa mple.com" would be cut at the space and kept as the host "exa".
+        if any(c.isspace() for c in s):
+            raise HTTPException(422, f"The {label} link has a space in it. Copy the link again without "
+                                     "spaces, or leave it empty to fill in later.")
+    else:
+        m = re.search(r"https?://[^\s<>\"']+", s)  # share text: keep just the link out of the caption
+        if m:
+            s = m.group(0).rstrip(".,;)]}")
     p = urlsplit(s)
     if p.scheme not in ("http", "https") or not p.netloc:
         raise HTTPException(422, f"The {label} link is not a web address. Paste the link itself "
