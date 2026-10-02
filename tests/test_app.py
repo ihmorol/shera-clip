@@ -275,3 +275,52 @@ def test_static_revalidates_on_every_request(client):
     r = client.get("/static/app.css")
     assert r.status_code == 200
     assert r.headers["cache-control"] == "no-cache"  # upgrades show on the next reload, not after a heuristic-cache delay
+
+
+def _posting_record(cid):
+    pipeline.ensure_review(cid)  # make_job leaves the review row for the pipeline to create
+    return db.one("SELECT posted FROM reviews WHERE candidate_id=?", cid)["posted"] or {}
+
+
+def test_posting_record_stores_links_and_allows_blanks(client):
+    """Story 34/D12: a real link is kept, and leaving one empty is normal, not an error."""
+    job_id, cid = make_job()
+    r = client.post(f"/jobs/{job_id}/clips/{cid}/posted", data={
+        "facebook_url": "https://facebook.com/rimonsielts/posts/123", "youtube_url": "",
+        "notes": "reached 4k"}, follow_redirects=False)
+    assert r.status_code == 303
+    assert _posting_record(cid) == {"facebook_url": "https://facebook.com/rimonsielts/posts/123",
+                                    "youtube_url": "", "notes": "reached 4k"}
+
+
+def test_posting_record_unwraps_a_link_pasted_inside_shared_text(client):
+    job_id, cid = make_job()
+    client.post(f"/jobs/{job_id}/clips/{cid}/posted", data={
+        "facebook_url": "Check this out! https://facebook.com/rimonsielts/posts/9", "notes": ""})
+    assert _posting_record(cid)["facebook_url"] == "https://facebook.com/rimonsielts/posts/9"
+
+
+def test_posting_record_refuses_a_link_that_is_not_a_web_address(client):
+    """A typo must not be stored as if it were a real post; the page explains and keeps the record."""
+    job_id, cid = make_job()
+    r = client.post(f"/jobs/{job_id}/clips/{cid}/posted", data={"facebook_url": "not a url at all", "notes": ""})
+    assert r.status_code == 200
+    assert "not a web address" in r.text
+    assert _posting_record(cid) == {}   # nothing half-saved
+
+
+def test_posting_record_refuses_a_non_http_scheme(client):
+    job_id, cid = make_job()
+    r = client.post(f"/jobs/{job_id}/clips/{cid}/posted", data={"youtube_url": "javascript:alert(1)"})
+    assert "not a web address" in r.text
+    assert _posting_record(cid) == {}
+
+
+def test_a_bad_second_link_does_not_wipe_the_saved_first(client):
+    job_id, cid = make_job()
+    client.post(f"/jobs/{job_id}/clips/{cid}/posted", data={"facebook_url": "https://facebook.com/x/posts/1"})
+    r = client.post(f"/jobs/{job_id}/clips/{cid}/posted", data={
+        "facebook_url": "https://facebook.com/x/posts/1", "youtube_url": "nope", "notes": "later"})
+    assert "not a web address" in r.text
+    kept = _posting_record(cid)
+    assert kept["facebook_url"] == "https://facebook.com/x/posts/1"  # the good link survived the typo
