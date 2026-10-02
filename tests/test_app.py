@@ -152,6 +152,17 @@ def test_media_range_request_returns_206_and_stays_in_data(client):
     assert client.get("/media/%2e%2e/%2e%2e/pyproject.toml").status_code == 404
 
 
+def test_peaks_endpoint_serves_the_cache_and_404s_cleanly(client):
+    job_id, _ = make_job()
+    r = client.get(f"/jobs/{job_id}/peaks.json")
+    assert r.status_code == 404 and "waveform" in r.json()["detail"]  # the review page hides the strip
+    (pipeline.job_dir(job_id) / "peaks.json").write_text(json.dumps([0, 100, 32768]), encoding="utf-8")
+    r = client.get(f"/jobs/{job_id}/peaks.json")
+    assert r.status_code == 200 and r.json() == [0, 100, 32768]
+    assert client.get("/jobs/nope/peaks.json").status_code == 404
+    assert client.get("/jobs/../peaks.json").status_code == 404  # only real job ids reach the folder
+
+
 def test_indeterminate_call_retry_resolves_then_resumes(client, monkeypatch):
     job_id, _ = make_job(status="paused", stage="score")
     call_id = db.x("INSERT INTO paid_calls(job_id, key, kind, state, est_usd, created, updated) "

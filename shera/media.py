@@ -102,6 +102,16 @@ def speech_intervals(path):
     return speech
 
 
+def peaks(path, buckets=2000):
+    """Per-bucket peak amplitude (0..32768) of the first audio stream across the whole file,
+    for the review waveform: the same 4 kHz mono s16le decode _envelope uses, whole file at once."""
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-map", "0:a:0", "-ac", "1",
+                          "-ar", "4000", "-f", "s16le", "-"], capture_output=True).stdout
+    x = np.abs(np.frombuffer(raw, np.int16).astype(np.int32))
+    edges = np.linspace(0, len(x), buckets + 1).round().astype(int)
+    return [int(x[a:b].max()) if b > a else 0 for a, b in zip(edges, edges[1:])]
+
+
 def _clock(created):
     try:
         return datetime.fromisoformat(created.replace("Z", "+00:00"))

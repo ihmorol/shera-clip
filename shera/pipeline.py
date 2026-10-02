@@ -181,7 +181,22 @@ def _speech(job_id):
     path = job_dir(job_id) / "speech.json"
     if not path.exists():
         _write(path, media.speech_intervals(media_path(job_id)))
+    _peaks(job_id)
     return [tuple(x) for x in _read(path)]
+
+
+def _peaks(job_id):
+    """Cache the review waveform's peaks once per job, only when the media has an audio stream."""
+    d = job_dir(job_id)
+    if (d / "peaks.json").exists() or not media.probe(media_path(job_id))["has_audio"]:
+        return
+    _write(d / "peaks.json", media.peaks(media_path(job_id)))
+
+
+def peaks_cached(job_id):
+    """The job's cached waveform peaks, or [] when none were computed (no audio stream, or pre-waveform job)."""
+    p = job_dir(job_id) / "peaks.json"
+    return _read(p) if p.exists() else []
 
 
 def check_audible(speech, duration):

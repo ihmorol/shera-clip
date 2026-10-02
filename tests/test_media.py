@@ -72,6 +72,15 @@ def test_speech_intervals(main, vfr):
     _close(media.speech_intervals(vfr), VFR_TONES)   # zero-based despite the 3 s stream start
 
 
+def test_peaks_follow_the_tones(main):
+    p = media.peaks(main)
+    assert len(p) == 2000 and all(isinstance(v, int) and 0 <= v <= 32768 for v in p)
+    at = lambda t: p[int(t * 2000 / 60)]  # 2000 buckets over 60 s
+    assert all(at(t) > 10000 for t in (4, 14, 27, 39, 52))   # mid-tone in each of the five spans
+    assert all(at(t) < 500 for t in (8, 20, 34, 45, 59.5))   # the silent gaps between them
+    assert len(media.peaks(main, buckets=50)) == 50 and max(media.peaks(main, buckets=50)) > 10000
+
+
 def test_audio_chunks(main, tmp_path):
     chunks = media.audio_chunks(main, tmp_path, MAIN_TONES, chunk_s=20)
     # gap midpoints nearest 20 s and 40 s are 20.0 and 45.0

@@ -417,6 +417,16 @@ def job_page(request: Request, job_id: str):
     return _job_page(request, job_id)
 
 
+@app.get("/jobs/{job_id}/peaks.json")
+def job_peaks(job_id: str):
+    """Cached waveform peaks for the review page; the browser hides the strip when this is absent."""
+    _job_or_404(job_id)  # job ids come from the DB, so a bare .. cannot walk out of the job folder
+    p = pipeline.job_dir(job_id) / "peaks.json"
+    if not p.exists():
+        raise HTTPException(404, "No waveform peaks for this class yet")
+    return FileResponse(p, headers={"Cache-Control": "max-age=86400"})
+
+
 @app.post("/jobs/{job_id}/authorize")
 def authorize(job_id: str):
     job = _job_or_404(job_id)
