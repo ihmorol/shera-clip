@@ -110,8 +110,10 @@ def occurrence(m):
         return next(({"id": f["id"], "size": f.get("file_size")} for t in types for f in done if f.get("file_type") == t), None)
 
     vtt, m4a = pick("TRANSCRIPT", "CC"), pick("M4A")
-    # one import fetches the preferred video plus the chosen extras: what "needs about X" on the page estimates
-    need = sum((f.get("file_size") or f.get("size") or 0) for f in videos[:1] + [vtt, m4a] if f)
+    # "Needs about X" is the default import: the preferred video plus the transcript Zoom offers.
+    # The separate audio is unticked by default (D27), so counting it here would overstate the
+    # footprint; zoom.download re-checks free space per file before anything is fetched.
+    need = sum((f.get("file_size") or f.get("size") or 0) for f in videos[:1] + [vtt] if f)
     return {"uuid": m["uuid"], "topic": m.get("topic") or "Zoom meeting", "start": m.get("start_time", ""),
             "minutes": m.get("duration"),
             "videos": [{"id": f["id"], "size": f.get("file_size"),

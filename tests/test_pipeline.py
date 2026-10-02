@@ -216,6 +216,37 @@ def test_redo_clears_stale_contact_sheet_stills(env):
     assert not frames.exists()
 
 
+def test_stills_survive_one_unreadable_candidate(env, monkeypatch):
+    """One bad seek must not cost the operator every other thumbnail on the contact sheet."""
+    src, vtt, calls = env
+    real = media.thumbnail
+
+    def flaky(video, out, at, width=None):
+        if at == pytest.approx(6.0):  # the first candidate's still
+            raise RuntimeError("ffmpeg failed")
+        return real(video, out, at, width=width)
+
+    monkeypatch.setattr(media, "thumbnail", flaky)
+    jid = pipeline.start_job(src, vtt)
+    pipeline.authorize(jid)
+    frames = pipeline.job_dir(jid) / "frames"
+    assert len(list(frames.glob("*.jpg"))) == len(db.candidates(jid)) - 1
+
+
+def test_waveform_never_fails_the_class_when_peaks_cannot_be_decoded(env, monkeypatch):
+    """No waveform is a missing strip on the review page; it must never stop the class."""
+    src, vtt, calls = env
+
+    def boom(p, buckets=2000):
+        raise RuntimeError("ffmpeg failed")
+
+    monkeypatch.setattr(media, "peaks", boom)
+    jid = pipeline.start_job(src, vtt)
+    pipeline.authorize(jid)
+    assert db.get_job(jid)["status"] == "done"
+    assert not (pipeline.job_dir(jid) / "peaks.json").exists()
+
+
 def test_prepare_leaves_in_flight_web_draft_alone(env):
     src, vtt, calls = env
     jid = pipeline.start_job(src, vtt)

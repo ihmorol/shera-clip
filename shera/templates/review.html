@@ -15,7 +15,7 @@
       </nav>
     </div>
     <video id="source" src="{{ source_url }}" controls preload="metadata"></video>
-    <canvas id="waveform" class="waveform" hidden aria-label="Loudness waveform of the class; click or drag to move the playhead"></canvas>
+    <canvas id="waveform" class="waveform" role="img" hidden aria-label="Loudness waveform of the class; click or drag to move the playhead"></canvas>
     <p class="tools"><button type="button" id="play-span"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Play this clip</button>
       <span class="muted">Click a line to hear it. Highlighted lines are inside the clip; the English under a line is its translation.</span></p>
     <ol class="transcript" id="transcript" aria-label="Transcript around this clip">

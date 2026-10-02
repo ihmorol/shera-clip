@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from shera import candidates as cand
-from shera import config, db, ledger, pipeline, providers, zoom
+from shera import config, db, ledger, media, pipeline, providers, zoom
 
 HERE = Path(__file__).parent
 STAGES = ("import", "transcript", "authorize", "transcribe", "translate", "candidates", "score", "prepare", "review")
@@ -129,15 +129,7 @@ def fmt_time(s):
     return f"{int(s // 3600)}:{int(s // 60 % 60):02d}:{s % 60:04.1f}"
 
 
-def fmt_bytes(n):
-    n = float(n or 0)
-    for unit in ("B", "KB", "MB", "GB"):
-        if n < 1024 or unit == "GB":
-            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
-        n /= 1024
-
-
-templates.env.filters.update(t=fmt_time, bytes=fmt_bytes, usd=lambda v: f"${float(v or 0):.4f}")
+templates.env.filters.update(t=fmt_time, bytes=media.fmt_bytes, usd=lambda v: f"${float(v or 0):.4f}")
 templates.env.globals.update(CATEGORIES=CATEGORIES, CAP=config.CAP_USD, STAGES=STAGES,
                              STAGE_LABELS=STAGE_LABELS, STATUS_LABELS=STATUS_LABELS, zoom_time=zoom.local_time)
 

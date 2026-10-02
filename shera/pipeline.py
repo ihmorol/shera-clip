@@ -2,11 +2,13 @@
 import contextlib
 import hashlib
 import json
+import os
 import re
 import shutil
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from shera import candidates as cand
@@ -191,17 +193,16 @@ def _speech(job_id):
 
 
 def _peaks(job_id):
-    """Cache the review waveform's peaks once per job, only when the media has an audio stream."""
+    """Cache the review waveform's peaks once per job, only when the media has an audio stream.
+    A decode failure leaves the strip absent rather than failing the class: the review page
+    simply hides the waveform, and the operator can still work from the transcript."""
     d = job_dir(job_id)
     if (d / "peaks.json").exists() or not media.probe(media_path(job_id))["has_audio"]:
         return
-    _write(d / "peaks.json", media.peaks(media_path(job_id)))
-
-
-def peaks_cached(job_id):
-    """The job's cached waveform peaks, or [] when none were computed (no audio stream, or pre-waveform job)."""
-    p = job_dir(job_id) / "peaks.json"
-    return _read(p) if p.exists() else []
+    try:
+        _write(d / "peaks.json", media.peaks(media_path(job_id)))
+    except (RuntimeError, OSError):
+        pass
 
 
 def check_audible(speech, duration):
@@ -415,12 +416,23 @@ def make_frame(job_id, c):
 
 
 def _stills(job_id):
-    """Pre-generate every candidate's still so the class page never runs ffmpeg inside a request thread."""
-    for c in db.candidates(job_id):
-        try:
-            make_frame(job_id, c)
-        except RuntimeError:  # unreadable media: the endpoint reports "No frame" per clip instead
-            pass
+    """Pre-generate every candidate's still so the class page never runs ffmpeg inside a request thread.
+    A three-hour class yields hundreds of candidates and each seek costs a few hundred ms, so they
+    run concurrently: serial generation held the prepare stage (and the operator) for over a minute.
+    Unreadable media is skipped, and the frame endpoint reports "No frame" for that clip instead."""
+    cs = db.candidates(job_id)
+    if not cs:
+        return
+    with ThreadPoolExecutor(max_workers=min(8, (os.cpu_count() or 2))) as pool:
+        list(pool.map(lambda c: _safe_frame(job_id, c), cs))
+
+
+def _safe_frame(job_id, c):
+    try:
+        make_frame(job_id, c)
+    except (RuntimeError, OSError):
+        pass  # unreadable media: the endpoint reports "No frame" per clip instead
+    return None
 
 
 def redo(job_id):
