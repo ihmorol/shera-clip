@@ -127,6 +127,11 @@ def _import(job_id):
         _download(job_id, job, d)
         job = db.get_job(job_id)
     if not job["source_sha256"] or not src.exists():
+        need = Path(job["source_path"]).stat().st_size  # the copy and its transcript/audio extras together
+        for extra in (job["vtt_path"], job["audio_path"]):
+            if extra:
+                need += Path(extra).stat().st_size
+        media.ensure_free(need)
         sha, n = media.copy_with_hash(Path(job["source_path"]), src, lambda f: db.update_job(job_id, progress=f))
         db.update_job(job_id, source_sha256=sha, source_bytes=n)
     if job["vtt_path"] and not (d / "source.vtt").exists():

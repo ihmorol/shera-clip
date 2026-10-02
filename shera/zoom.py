@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 import httpx
 
-from shera import config  # noqa: F401  (loads .env)
+from shera import config, media  # noqa: F401  (config loads .env)
 
 API = "https://api.zoom.us/v2"
 TOKEN_URL = "https://zoom.us/oauth/token"
@@ -109,13 +109,17 @@ def occurrence(m):
     def pick(*types):
         return next(({"id": f["id"], "size": f.get("file_size")} for t in types for f in done if f.get("file_type") == t), None)
 
+    vtt, m4a = pick("TRANSCRIPT", "CC"), pick("M4A")
+    # one import fetches the preferred video plus the chosen extras: what "needs about X" on the page estimates
+    need = sum((f.get("file_size") or f.get("size") or 0) for f in videos[:1] + [vtt, m4a] if f)
     return {"uuid": m["uuid"], "topic": m.get("topic") or "Zoom meeting", "start": m.get("start_time", ""),
             "minutes": m.get("duration"),
             "videos": [{"id": f["id"], "size": f.get("file_size"),
                         "label": LAYOUTS.get(f.get("recording_type"), (f.get("recording_type") or "Video").replace("_", " ").capitalize())}
                        for f in videos],
-            "vtt": pick("TRANSCRIPT", "CC"), "m4a": pick("M4A"),
-            "processing": sum(f.get("status", "completed") != "completed" for f in m.get("recording_files", []))}
+            "vtt": vtt, "m4a": m4a,
+            "processing": sum(f.get("status", "completed") != "completed" for f in m.get("recording_files", [])),
+            "need": need}
 
 
 def recordings(to):
@@ -161,6 +165,8 @@ def download(uuid, file_id, dst, on_progress=None):
     if f.get("status", "completed") != "completed":
         raise ZoomError("Zoom is still processing that recording file. Resume in a few minutes.")
     expected = f.get("file_size")
+    if expected:  # the free-space guard runs here, before every caller's download (pipeline._download included)
+        media.ensure_free(expected * 1.1)
     part = dst.with_name(dst.name + ".part")
     h, n = hashlib.sha256(), 0
     try:

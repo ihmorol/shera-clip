@@ -67,6 +67,16 @@ def test_copy_with_hash(main, tmp_path):
     assert seen and seen[-1] == 1.0
 
 
+def test_ensure_free_names_the_disk_and_the_fix(monkeypatch):
+    from collections import namedtuple
+    usage = namedtuple("usage", "total used free")
+    monkeypatch.setattr(media.shutil, "disk_usage", lambda p: usage(0, 0, int(0.8 * 2**30)))
+    with pytest.raises(ValueError, match="Needs 3.2 GB free, only 0.8 GB on this disk.*SHERA_DATA"):
+        media.ensure_free(3.2 * 2**30)
+    monkeypatch.setattr(media.shutil, "disk_usage", lambda p: usage(0, 0, 4 * 2**30))
+    media.ensure_free(3.2 * 2**30)  # enough room: no raise
+
+
 def test_speech_intervals(main, vfr):
     _close(media.speech_intervals(main), MAIN_TONES)
     _close(media.speech_intervals(vfr), VFR_TONES)   # zero-based despite the 3 s stream start

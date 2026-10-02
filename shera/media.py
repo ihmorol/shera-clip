@@ -7,12 +7,15 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+
+from shera import config
 
 W, H, FPS = 1080, 1920, 30
 TITLE_H = 200            # top band reserved for the title in crop mode
@@ -76,6 +79,17 @@ def copy_with_hash(src, dst, on_progress=None):
                 on_progress(n / total)
     os.replace(part, dst)
     return h.hexdigest(), n
+
+
+def ensure_free(needed_bytes):
+    """Raise before a big copy or download when the data disk cannot hold it; SHERA_DATA names the drive to change."""
+    p = Path(config.JOBS)
+    while not p.exists():
+        p = p.parent  # a fresh data dir: the drive is what matters, not the missing folder
+    free = shutil.disk_usage(p).free
+    if free < needed_bytes:
+        raise ValueError(f"Needs {needed_bytes / 2**30:.1f} GB free, only {free / 2**30:.1f} GB on this disk. "
+                         "Free space or pick another drive (SHERA_DATA).")
 
 
 def speech_intervals(path):
