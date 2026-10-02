@@ -102,6 +102,31 @@ def _clip_or_404(job_id, cid):
     return c
 
 
+def _post_url(raw, label):
+    """A posting link the operator can trust later, or "" when they left it blank.
+    Pasted share text ("Check this out! https://youtu.be/x") becomes the bare link, and
+    anything that is not an http(s) web address is refused in plain words rather than
+    stored, so a later performance review never reads a typo as a real post."""
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    if re.match(r"https?://", s, re.I):
+        # The operator pasted the link itself: it must be one unbroken address, otherwise
+        # "http://exa mple.com" would be cut at the space and kept as the host "exa".
+        if any(c.isspace() for c in s):
+            raise HTTPException(422, f"The {label} link has a space in it. Copy the link again without "
+                                     "spaces, or leave it empty to fill in later.")
+    else:
+        m = re.search(r"https?://[^\s<>\"']+", s)  # share text: keep just the link out of the caption
+        if m:
+            s = m.group(0).rstrip(".,;)]}")
+    p = urlsplit(s)
+    if p.scheme not in ("http", "https") or not p.netloc:
+        raise HTTPException(422, f"The {label} link is not a web address. Paste the link itself "
+                                 "(starting with http:// or https://), or leave it empty to fill in later.")
+    return s
+
+
 def _units(job_id):
     p = pipeline.job_dir(job_id) / "transcript.json"
     return json.loads(p.read_text(encoding="utf-8"))["units"] if p.exists() else []
@@ -708,10 +733,22 @@ def open_folder(job_id: str):
 
 
 @app.post("/jobs/{job_id}/clips/{cid}/posted")
-def posted(job_id: str, cid: int, facebook_url: str = Form(""), youtube_url: str = Form(""), notes: str = Form("")):
+def posted(request: Request, job_id: str, cid: int, facebook_url: str = Form(""),
+           youtube_url: str = Form(""), notes: str = Form("")):
     _job_or_404(job_id), _clip_or_404(job_id, cid)
-    db.update_review(cid, posted={"facebook_url": facebook_url.strip(), "youtube_url": youtube_url.strip(),
-                                  "notes": notes.strip()})
+    db.review(cid)  # a clip recorded before its first review has no row to update yet
+    # Both links are checked before anything is written, so a typo in the second field
+    # cannot wipe the link already saved for the first. Posting records stay optional
+    # (D12): a blank link is normal and never blocks the export.
+    try:
+        record = {"facebook_url": _post_url(facebook_url, "Facebook"),
+                  "youtube_url": _post_url(youtube_url, "YouTube"),
+                  "notes": notes.strip()}
+    except HTTPException as e:
+        # Back to the same page with the reason in plain words, so the operator can fix
+        # the one field and keep everything else they typed.
+        return export_page(request, job_id, error=str(e.detail))
+    db.update_review(cid, posted=record)
     return RedirectResponse(f"/jobs/{job_id}/export", 303)
 
 
