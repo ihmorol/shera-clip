@@ -70,7 +70,11 @@ async def guard(request: Request, call_next):
         src = origin if origin is not None else request.headers.get("referer")
         if src is not None and urlsplit(src).netloc not in _allowed_hosts():
             return PlainTextResponse("Cross-origin request refused", status_code=403)
-    return await call_next(request)
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        # upgrades must show up on the next reload, not after a browser heuristic cache expires
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 # ---------- helpers ----------

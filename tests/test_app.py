@@ -269,3 +269,9 @@ def test_import_takes_zoom_audio_and_browse_lists_by_type(client, tmp_path, monk
     names = [f["name"] for f in client.get("/browse", params={"path": str(tmp_path), "ext": ".m4a"}).json()["files"]]
     assert names == ["audio1.m4a"]
     assert client.get("/browse", params={"path": str(tmp_path), "ext": ".exe"}).status_code == 422
+
+
+def test_static_revalidates_on_every_request(client):
+    r = client.get("/static/app.css")
+    assert r.status_code == 200
+    assert r.headers["cache-control"] == "no-cache"  # upgrades show on the next reload, not after a heuristic-cache delay
