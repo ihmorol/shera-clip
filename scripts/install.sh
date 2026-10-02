@@ -30,13 +30,18 @@ echo "Package installed (with the desktop extra)."
 
 if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
     echo "FFmpeg was not found (needed to cut and caption the clips)."
-    read -r -p "Install FFmpeg now? [y/N] " answer
+    read -r -p "Install FFmpeg now? [y/N] " answer || answer=""
     case "$answer" in
-        y|Y)
-            if command -v apt-get >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y ffmpeg; fi
-            if command -v brew >/dev/null 2>&1; then brew install ffmpeg; fi
-            if command -v dnf >/dev/null 2>&1; then sudo dnf install -y ffmpeg; fi
-            ;;
+        y|Y|yes|Yes)
+            if command -v apt-get >/dev/null 2>&1; then
+                sudo apt-get update && sudo apt-get install -y ffmpeg || echo "FFmpeg install failed; install it manually, then run .venv/bin/shera doctor."
+            elif command -v brew >/dev/null 2>&1; then
+                brew install ffmpeg || echo "FFmpeg install failed; install it manually, then run .venv/bin/shera doctor."
+            elif command -v dnf >/dev/null 2>&1; then
+                sudo dnf install -y ffmpeg || echo "FFmpeg install failed; install it manually, then run .venv/bin/shera doctor."
+            else
+                echo "No supported package manager (apt/brew/dnf) found. Install FFmpeg manually, then run .venv/bin/shera doctor."
+            fi ;;
         *) echo "No problem — install it later, then run .venv/bin/shera doctor." ;;
     esac
 else
@@ -48,7 +53,9 @@ if [ "${1:-}" = "--add-path" ]; then
     case ":$PATH:" in *":$dir:"*) ;; *) echo "Add this to your shell profile to use \`shera\` anywhere:  export PATH=\"$dir:\$PATH\"" ;; esac
 fi
 
-.venv/bin/shera doctor
+rc=0
+.venv/bin/shera doctor || rc=$?
 echo
 echo "Done. Everything (web, CLI, desktop) drives the same local server and data."
-echo "Desktop:  .venv/bin/shera desktop    Web:  .venv/bin/shera    CLI:  .venv/bin/shera --help"
+echo "Desktop:  .venv/bin/shera desktop    Web:  .venv/bin/python -m shera    CLI:  .venv/bin/shera --help"
+exit $rc

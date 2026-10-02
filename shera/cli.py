@@ -17,6 +17,8 @@ from shera import config, db, ledger, pipeline, zoom
 
 
 def _out(payload):
+    if sys.stdout is None:  # pythonw (the desktop shortcut) has no console streams
+        return
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 

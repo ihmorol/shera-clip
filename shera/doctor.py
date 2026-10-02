@@ -29,7 +29,7 @@ def _font_missing():
 
 NEXT = [
     ("desktop", "shera desktop", "native window; needs the Desktop extra above"),
-    ("web", "shera", "opens http://127.0.0.1:8765 in your browser"),
+    ("web", "python -m shera", "opens http://127.0.0.1:8765 in your browser"),
     ("cli", "shera --help", "machine stages with JSON output"),
 ]
 

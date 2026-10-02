@@ -26,7 +26,7 @@ Shera Clip is three surfaces over the same local server and data — pick whiche
 
 ## Install with one command (D34)
 
-Double-click **`install.bat`** (Windows) or run **`./scripts/install.sh`** (macOS/Linux). The installer sets up Python 3.12+ and FFmpeg if they are missing (with your consent), creates the virtualenv, installs the app with the desktop extra, adds Start-menu shortcuts, and finishes with a `shera doctor` checklist that names anything still missing and its exact fix. Re-run it any time; it is safe to repeat.
+Double-click **`install.bat`** (Windows) or run **`./scripts/install.sh`** (macOS/Linux). The installer sets up Python 3.12+ and FFmpeg if they are missing (with your consent), creates the virtualenv, installs the app with the desktop extra, adds Start-menu shortcuts (Windows), and finishes with a `shera doctor` checklist that names anything still missing and its exact fix. Re-run it any time; it is safe to repeat.
 
 ## Run it
 

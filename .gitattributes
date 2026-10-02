@@ -3,3 +3,6 @@
 *.py text eol=lf
 *.yml text eol=lf
 *.json text eol=lf
+
+# batch files need CRLF
+*.bat eol=crlf
