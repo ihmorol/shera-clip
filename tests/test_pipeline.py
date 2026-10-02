@@ -42,7 +42,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(media, "speech_intervals", lambda p: [(0.0, DUR)])
     monkeypatch.setattr(media, "peaks", lambda p, buckets=2000: [10] * buckets)
     monkeypatch.setattr(media, "render", lambda *a, **k: (calls["render"].append(a), a[6].write_bytes(b"mp4")))
-    monkeypatch.setattr(media, "thumbnail", lambda v, out, at: out.write_bytes(b"jpg"))
+    monkeypatch.setattr(media, "thumbnail", lambda v, out, at, width=None: out.write_bytes(b"jpg"))
     monkeypatch.setattr(media, "verify", lambda p, d, size=None: [])
 
     def jev(text, original=None):
@@ -193,6 +193,27 @@ def test_failed_export_keeps_previous_package(env, monkeypatch):
     with pytest.raises(RuntimeError):
         pipeline.export(jid)
     assert json.loads((root / "index.json").read_text(encoding="utf-8"))[0]["candidate_id"] == cid
+
+
+def test_prepare_pre_generates_every_contact_sheet_still(env):
+    """The class page's thumbnails exist before any page request, named exactly as the frame endpoint serves them."""
+    src, vtt, calls = env
+    jid = pipeline.start_job(src, vtt)
+    pipeline.authorize(jid)
+    frames = pipeline.job_dir(jid) / "frames"
+    cands = db.candidates(jid)
+    assert len(list(frames.glob("*.jpg"))) == len(cands)  # every candidate, not only the shortlist
+    assert all((frames / f"{c['id']}-{c['start']:.1f}.jpg").stat().st_size > 0 for c in cands)
+
+
+def test_redo_clears_stale_contact_sheet_stills(env):
+    src, vtt, calls = env
+    jid = pipeline.start_job(src, vtt)
+    pipeline.authorize(jid)
+    frames = pipeline.job_dir(jid) / "frames"
+    assert list(frames.glob("*.jpg"))
+    pipeline.redo(jid)  # new candidates get new starts: the old stills must not survive
+    assert not frames.exists()
 
 
 def test_prepare_leaves_in_flight_web_draft_alone(env):

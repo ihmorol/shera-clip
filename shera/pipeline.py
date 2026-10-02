@@ -401,6 +401,26 @@ def _prepare(job_id):
         if drafts_open(rv["drafts"]) and not in_flight:  # an in-flight web draft task owns that call
             draft(c["id"])
         db.update_job(job_id, progress=(n + 1) / len(short))
+    _stills(job_id)
+
+
+def make_frame(job_id, c):
+    """The candidate's contact-sheet still (a few seconds in, 480 px wide), made once and then cached;
+    the review-page frame endpoint serves exactly this file as its on-demand fallback."""
+    out = job_dir(job_id) / "frames" / f"{c['id']}-{c['start']:.1f}.jpg"
+    if not out.exists():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        media.thumbnail(media_path(job_id), out, c["start"] + min(6.0, (c["end"] - c["start"]) / 3), width=480)
+    return out
+
+
+def _stills(job_id):
+    """Pre-generate every candidate's still so the class page never runs ffmpeg inside a request thread."""
+    for c in db.candidates(job_id):
+        try:
+            make_frame(job_id, c)
+        except RuntimeError:  # unreadable media: the endpoint reports "No frame" per clip instead
+            pass
 
 
 def redo(job_id):
@@ -414,7 +434,7 @@ def redo(job_id):
     db.x("DELETE FROM reviews WHERE candidate_id IN (SELECT id FROM candidates WHERE job_id=?)", job_id)
     db.x("DELETE FROM candidates WHERE job_id=?", job_id)
     (d / "transcript.json").unlink(missing_ok=True)
-    for sub in (d / "audio", d / "previews", config.DATA / "exports" / job_id):
+    for sub in (d / "audio", d / "previews", d / "frames", config.DATA / "exports" / job_id):
         shutil.rmtree(sub, ignore_errors=True)
     keep = [f for f in db.get_job(job_id)["flags"] if f.startswith("Zoom audio")]
     db.update_job(job_id, authorized_usd=None, estimate_usd=None, transcript_source=None,

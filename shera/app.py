@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from shera import candidates as cand
-from shera import config, db, ledger, media, pipeline, providers, zoom
+from shera import config, db, ledger, pipeline, providers, zoom
 
 HERE = Path(__file__).parent
 STAGES = ("import", "transcript", "authorize", "transcribe", "translate", "candidates", "score", "prepare", "review")
@@ -615,15 +615,13 @@ def reset_captions(job_id: str, cid: int):
 
 @app.get("/jobs/{job_id}/clips/{cid}/frame.jpg")
 def clip_frame(job_id: str, cid: int):
-    """A small still from a few seconds into the clip, for the contact sheet (made once, then cached)."""
+    """A small still from a few seconds into the clip, for the contact sheet (made by _prepare, then cached)."""
     _job_or_404(job_id)
     c = _clip_or_404(job_id, cid)
-    out = pipeline.job_dir(job_id) / "frames" / f"{cid}-{c['start']:.1f}.jpg"
-    if not out.exists():
-        try:
-            media.thumbnail(pipeline.media_path(job_id), out, c["start"] + min(6.0, (c["end"] - c["start"]) / 3), width=480)
-        except RuntimeError:
-            raise HTTPException(404, "No frame")
+    try:
+        out = pipeline.make_frame(job_id, c)
+    except RuntimeError:
+        raise HTTPException(404, "No frame")
     return FileResponse(out, headers={"Cache-Control": "max-age=86400"})
 
 
