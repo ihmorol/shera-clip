@@ -25,13 +25,15 @@ function Refresh-Path {
 $py = Get-Command python -ErrorAction SilentlyContinue
 $ok = $false
 if ($py) {
-    $v = (& python --version) 2>$null
+    # a Store stub or old python prints to stderr; under EAP=Stop that throws even when redirected
+    try { $v = (& python --version) 2>$null } catch { $v = $null }
     if ($v -match "Python 3\.(\d+)\." -and [int]$Matches[1] -ge 12) { $ok = $true; Write-Host "Python: $v" }
 }
 if (-not $ok) {
     Write-Host "Python 3.12+ not found."
     if (Need-Winget) {
-        winget install --id Python.Python.3.13 -e --accept-source-agreements --accept-package-agreements
+        try { winget install --id Python.Python.3.13 -e --accept-source-agreements --accept-package-agreements } catch {}
+        if ($LASTEXITCODE -ne 0) { Write-Host "winget could not install Python ($LASTEXITCODE). Install Python 3.12+ from python.org, then re-run." -ForegroundColor Yellow; exit 1 }
         Refresh-Path
         $py = Get-Command python -ErrorAction SilentlyContinue
         if (-not $py) { Write-Host "Python installed but not on PATH yet. Reopen the terminal and re-run this installer." -ForegroundColor Yellow; exit 1 }
@@ -42,9 +44,12 @@ if (-not $ok) {
 $created = $false
 $pylauncher = Get-Command py -ErrorAction SilentlyContinue
 if ($pylauncher) {
-    & py -3.13 --version 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        if (-not (Test-Path "$root\.venv")) { py -3.13 -m venv "$root\.venv"; $created = $true }
+    try { & py -3.13 --version 2>$null; $py313 = ($LASTEXITCODE -eq 0) } catch { $py313 = $false }
+    if ($py313) {
+        if (-not (Test-Path "$root\.venv")) {
+            py -3.13 -m venv "$root\.venv"
+            if ($LASTEXITCODE -ne 0) { Write-Host "py -3.13 venv failed; falling back to python." -ForegroundColor Yellow } else { $created = $true }
+        }
     }
 }
 if (-not (Test-Path "$root\.venv")) {
@@ -65,9 +70,9 @@ if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
     if (Need-Winget) {
         $answer = Read-Host "Install FFmpeg now with winget? [y/N]"
         if ($answer -match "^[Yy]") {
-            winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements
-            Refresh-Path
-            Write-Host "FFmpeg installed. Reopen the terminal so it lands on PATH." -ForegroundColor Yellow
+            try { winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements } catch {}
+            if ($LASTEXITCODE -ne 0) { Write-Host "winget could not install FFmpeg ($LASTEXITCODE). Install it from ffmpeg.org, then run .venv\Scripts\shera.exe doctor." -ForegroundColor Yellow }
+            else { Refresh-Path; Write-Host "FFmpeg installed (the doctor below re-checks it)." -ForegroundColor Yellow }
         } else {
             Write-Host "Skipped. Install FFmpeg later, then run .venv\Scripts\shera.exe doctor." -ForegroundColor Yellow
         }
@@ -101,7 +106,7 @@ if (Test-Path $sheraExe) {
 if ($AddPath) {
     $dir = "$root\.venv\Scripts"
     # reg.exe preserves REG_EXPAND_SZ (SetEnvironmentVariable would freeze %VAR% entries)
-    $query = & reg.exe query "HKCU\Environment" /v Path 2>$null
+    try { $query = & reg.exe query "HKCU\Environment" /v Path 2>$null } catch { $query = $null }
     $line = ($query | Select-String "REG_") | Select-Object -First 1
     $type = "REG_SZ"; $val = ""
     if ($line) {

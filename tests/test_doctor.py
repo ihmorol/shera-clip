@@ -1,6 +1,7 @@
 """Doctor tests (D34): the checklist reports required gaps and names their fixes."""
 import json
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -68,3 +69,18 @@ def test_json_mode_matches_the_cli_contract(env, capsys):
     names = {c["name"] for c in d["checks"]}
     assert {"ffmpeg", "ffprobe", "OpenRouter", "Zoom"} <= names
     assert {n["surface"] for n in d["next"]} == {"desktop", "web", "cli"}
+
+
+def test_python_dash_m_dispatch(tmp_path):
+    """python -m shera with arguments goes through the CLI (the Start-menu shortcuts depend on it)."""
+    import os
+    import subprocess
+    root = Path(__file__).resolve().parent.parent
+    env = {**os.environ, "SHERA_DATA": str(tmp_path / "data")}
+    r = subprocess.run([sys.executable, "-m", "shera", "doctor", "--json"], capture_output=True,
+                       text=True, cwd=root, env=env, timeout=120)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert json.loads(r.stdout)["ok"] is True
+    h = subprocess.run([sys.executable, "-m", "shera", "--help"], capture_output=True,
+                       text=True, cwd=root, env=env, timeout=120)
+    assert h.returncode == 0 and "usage" in (h.stdout + h.stderr).lower()
