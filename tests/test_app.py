@@ -1,6 +1,7 @@
 """Web layer: security guards, pages, review round-trip, approve gating, media ranges."""
 import json
 import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -161,6 +162,21 @@ def test_peaks_endpoint_serves_the_cache_and_404s_cleanly(client):
     assert r.status_code == 200 and r.json() == [0, 100, 32768]
     assert client.get("/jobs/nope/peaks.json").status_code == 404
     assert client.get("/jobs/../peaks.json").status_code == 404  # only real job ids reach the folder
+
+
+def test_waveform_strip_is_reachable_and_usable_from_the_keyboard(client):
+    """The strip seeks, so it must be focusable and labelled as a control, not a picture."""
+    job_id, cid = make_job()
+    r = client.get(f"/jobs/{job_id}/clips/{cid}")
+    assert 'id="waveform"' in r.text
+    assert 'role="slider"' in r.text      # it is an interactive control
+    assert 'tabindex="0"' in r.text       # so it can actually take focus
+    assert "aria-valuetext" in r.text     # the position is announced, not only drawn
+    assert "aria-label" in r.text
+    assert 'role="img"' not in r.text     # a seek control is not a static image
+    js = (Path(web.HERE) / "static" / "review.js").read_text(encoding="utf-8")
+    assert 'wave.addEventListener("keydown"' in js  # arrows/PageUp/Home/End move the playhead
+    assert "#waveform" in js              # J/K must not fire while the strip has focus
 
 
 def test_indeterminate_call_retry_resolves_then_resumes(client, monkeypatch):

@@ -62,6 +62,13 @@ function drawWaveHead() {
   const x = Math.round(src.currentTime / (src.duration || 1) * wave.width);
   wctx.fillStyle = cssVar("--mask-hi");
   wctx.fillRect(x, 0, Math.max(1, Math.round(devicePixelRatio || 1)), wave.height);
+  announcePos();
+}
+function announcePos() {
+  // keep the slider's value in step with the playhead, so the position is spoken, not just seen
+  wave.setAttribute("aria-valuenow", src.currentTime.toFixed(1));
+  wave.setAttribute("aria-valuemax", (src.duration || 0).toFixed(1));
+  wave.setAttribute("aria-valuetext", fmt(src.currentTime || 0));
 }
 fetch(root.dataset.peaks).then((r) => { if (!r.ok) throw 0; return r.json(); }).then((p) => {
   peaks = p;
@@ -79,6 +86,24 @@ let seeking = false;
 wave.addEventListener("pointerdown", (e) => { seeking = true; wave.setPointerCapture(e.pointerId); seekAt(e); });
 wave.addEventListener("pointermove", (e) => { if (seeking) seekAt(e); });
 wave.addEventListener("pointerup", () => { seeking = false; });
+
+// keyboard: the strip is a seek control, so it must work without a mouse.
+// arrows nudge, shift jumps a whole clip, Home/End go to the ends of the class.
+wave.addEventListener("keydown", (e) => {
+  const dur = src.duration || 0, span = Math.max(5, val("end") - val("start"));
+  const step = e.shiftKey ? span : 5;
+  const go = (t) => { src.currentTime = Math.max(0, Math.min(dur, t)); drawWaveHead(); };
+  const at = src.currentTime || 0;
+  const keys = {
+    ArrowRight: () => go(at + step), ArrowUp: () => go(at + step),
+    ArrowLeft: () => go(at - step), ArrowDown: () => go(at - step),
+    PageUp: () => go(at + span), PageDown: () => go(at - span),
+    Home: () => go(0), End: () => go(dur),
+  };
+  if (!keys[e.key]) return;
+  e.preventDefault();
+  keys[e.key]();
+});
 
 // ---- span, transcript, duration ----
 function refreshSpan() {
@@ -258,7 +283,8 @@ if (firstIn) {
 
 // ---- keyboard: J / K previous / next candidate ----
 document.addEventListener("keydown", (e) => {
-  if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input, textarea, select, video")) return;
+  // the waveform strip handles its own arrows, so J/K must not fire while it has focus
+  if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input, textarea, select, video, #waveform")) return;
   const to = e.key === "j" ? root.dataset.prev : e.key === "k" ? root.dataset.next : "";
   if (!to) return;
   if (dirty && !confirm("Leave without saving?")) return;
