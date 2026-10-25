@@ -127,3 +127,19 @@ IELTS-only scope and laptop-only interface, while preserving explicit clip
 approval, provenance, spend authorization, durable local jobs, and honest
 quality evidence. IELTS remains a preset. Current supported imports and
 transcript-only limitations are documented in [Sites companion](sites-companion.md).
+
+## Owner direction update: 2026-10-25
+
+The owner directed an **infographic videos** extension: every approved clip can
+additionally be produced as a visual-first 16:9 video that plays the clip’s
+original, unmodified audio for exactly the audio’s duration while typographic
+infographics follow the spoken transcript. N approved clips produce N videos.
+No intro or ending is added; the voice is never modelled or replaced; the
+planner never invents facts. Rendering is local and cheap (one small paid
+scene-planning call per clip under the existing cap), every file passes
+automated QC before it is shown as done, and routine operator work shrinks:
+shortlist previews render automatically, the shortlist can be approved in one
+explicit action, and AI-proposed criteria can apply without a confirmation
+pause when requested at import. Clip selection, explicit approval, the spend
+cap, and provenance rules are unchanged. Specification:
+[infographics.md](infographics.md); decisions D35–D38; acceptance gate A8.
