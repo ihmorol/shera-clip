@@ -14,6 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from shera import app as web
+from shera import app as app_module
 from shera import config, db, infographics, ledger, media, pipeline, providers
 
 BASE = f"http://127.0.0.1:{config.PORT}"
@@ -427,8 +428,9 @@ def test_single_clip_route_and_error_state(client, monkeypatch):
     assert r.status_code == 409  # only approved clips get videos
 
 
-def test_approve_selected_bulk_action(client):
+def test_approve_selected_bulk_action(client, monkeypatch):
     web, (jid, cid, _) = client
+    monkeypatch.setattr(app_module, "_start_infographics", lambda j: False)  # covered by the dedicated test below
     db.update_review(cid, status="pending")  # the fixture seeds it approved; the bulk action needs it pending
     cid2 = db.x('INSERT INTO candidates(job_id, u0, u1, start, "end", text, value, clarity, opening, category, '
                 "score, shortlisted, rank) VALUES (?, 8, 11, 40, 60, 'more text', 3, 3, 3, 'exam_tip', 0.6, 1, 2)", jid)
@@ -444,6 +446,21 @@ def test_approve_selected_bulk_action(client):
     html = web.post(f"/jobs/{jid}/approve-selected").text
     assert "Approved 2 selected clips" in html and "1 still waiting" in html
     assert [db.review(c)["status"] for c in (cid, cid2, cid3)] == ["approved", "approved", "pending"]
+
+
+def test_approve_selected_starts_rendering_the_videos(client, monkeypatch):
+    web, (jid, cid, _) = client
+    started = []
+    monkeypatch.setattr(app_module, "_start_infographics", lambda j: started.append(j) or True)
+    db.update_review(cid, status="pending")
+    rv = pipeline.ensure_review(cid)
+    p = pipeline.job_dir(jid) / "previews" / f"{cid}-{pipeline.state_hash(rv)}.mp4"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(b"x")
+    pipeline.landscape_path(p).write_bytes(b"x")
+    db.update_review(cid, preview_path=str(p))
+    html = web.post(f"/jobs/{jid}/approve-selected").text
+    assert started == [jid] and "infographic videos are rendering" in html
 
 
 def test_render_previews_route_runs_in_background(client, monkeypatch):

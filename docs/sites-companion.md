@@ -17,7 +17,10 @@ claimed to be offline.
 1. Download `companion.zip` from the site's first-time setup and extract it.
 2. Install Python 3.12+ and FFmpeg with ffprobe and libass. Windows requires
    Nirmala UI for Bangla captions; other operating systems may need font
-   configuration before caption rendering is reliable.
+   configuration before caption rendering is reliable. Infographic videos
+   (D35–D38) additionally render slides in a local Chromium-family browser:
+   Microsoft Edge on Windows is used when present, or run
+   `python -m playwright install chromium` once.
 3. In the extracted folder, run `python -m pip install -e .`.
 4. Copy `.env.example` to `.env`, configure `OPENROUTER_API_KEY`, and run
    `python -m shera`. Do not send the key to the site or paste it into chat.
@@ -61,6 +64,11 @@ posting text and source provenance.
   needs operator video review; ranked scores do not guarantee best clips.
 - Preview rendering uses FFmpeg and the current portrait/landscape pipeline.
   Large inputs depend on local disk, memory and processing speed.
+- Infographic videos (D35–D38) render locally per approved clip: one paid
+  scene-plan call per clip under the same per-video authorization cap, slides
+  screenshot in a local browser, and every file passes media checks (codec,
+  size, duration, stream offsets, audio presence) before it is offered. No
+  voice is modelled or replaced; nothing is added at the start or the end.
 - Browser-to-loopback connectivity depends on local-network browser support
   and permissions. Failed connections show an error; no cloud fallback exists.
 - Regression and synthetic media checks do not establish real-world selection

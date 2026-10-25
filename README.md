@@ -35,6 +35,8 @@ python -m shera
 
 The app opens at `http://127.0.0.1:8765`. Put `class.mp4` and `class.vtt` (same file name) in `data/inbox/`, or paste their paths on the home page. With the four `ZOOM_*` values in `.env`, **Choose from Zoom cloud recordings** lists the teacher's cloud recordings a month at a time and downloads the chosen one. Then import the class and authorize paid work, which is capped at USD 1.50 per class. Review the shortlist, render a phone preview, and approve. Finally, export; packages land in `data/exports/<job>/`.
 
+Every approved clip can also become an **infographic video** (16:9, for YouTube): the clip's own audio, untouched, for the clip's exact length, while locally rendered slides follow what is said — see [docs/infographics.md](docs/infographics.md). Generating them for the whole shortlist is one click on the video's page.
+
 Run the tests with `pip install -e .[test]` and then `python -m pytest -q`. They generate their own synthetic media.
 
 See [contributing and maintenance](CONTRIBUTING.md) before changing product decisions.

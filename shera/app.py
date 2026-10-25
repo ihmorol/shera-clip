@@ -880,13 +880,12 @@ def infographics_page(request: Request, job_id: str, error: str = "", notice: st
                 all_task=TASKS.get(f"infographics:{job_id}", {}))
 
 
-@app.post("/jobs/{job_id}/infographics/generate")
-@app.post("/companion/jobs/{job_id}/infographics")
-def infographics_generate(job_id: str):
-    _job_or_404(job_id)
+def _start_infographics(job_id):
+    """Render an infographic video for every approved clip, one at a time, in the background.
+    Clips that already have a passing file are skipped; the paid plans replay from the ledger."""
     approved = _approved(job_id)
     if not approved:
-        raise HTTPException(409, "Approve at least one clip first.")
+        return False
 
     def work():
         for c in sorted(db.candidates(job_id), key=lambda x: (x["rank"] is None, x["rank"] or 0, x["start"])):
@@ -902,6 +901,15 @@ def infographics_generate(job_id: str):
                 TASKS[f"info:{c['id']}"] = {"state": "error", "error": str(e) or type(e).__name__}
 
     _bg(f"infographics:{job_id}", work)
+    return True
+
+
+@app.post("/jobs/{job_id}/infographics/generate")
+@app.post("/companion/jobs/{job_id}/infographics")
+def infographics_generate(job_id: str):
+    _job_or_404(job_id)
+    if not _start_infographics(job_id):
+        raise HTTPException(409, "Approve at least one clip first.")
     return RedirectResponse(f"/jobs/{job_id}/infographics", 303)
 
 
@@ -929,7 +937,7 @@ def infographics_state(job_id: str):
 @app.post("/jobs/{job_id}/approve-selected")
 def approve_selected(request: Request, job_id: str):
     """One explicit action for the whole shortlist: approve every pending shortlisted clip whose phone
-    preview is current. Clips that still need a preview are left pending and counted."""
+    preview is current, then start rendering their infographic videos (D37)."""
     _job_or_404(job_id)
     short, _ = _ordered(job_id)
     approved = blocked = 0
@@ -945,6 +953,8 @@ def approve_selected(request: Request, job_id: str):
     notice = f"Approved {approved} selected clip{'s' if approved != 1 else ''}."
     if blocked:
         notice += f" {blocked} still waiting for their preview to finish."
+    if approved and _start_infographics(job_id):
+        notice += " Their infographic videos are rendering — open Infographic videos to watch."
     return _job_page(request, job_id, notice=notice)
 
 
