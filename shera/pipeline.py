@@ -1,6 +1,7 @@
 """Resumable job runner: import -> transcript -> authorize -> transcribe -> candidates -> score -> prepare -> review."""
 import contextlib
 import hashlib
+import inspect
 import json
 import re
 import shutil
@@ -10,7 +11,7 @@ import uuid
 from pathlib import Path
 
 from shera import candidates as cand
-from shera import config, db, ledger, media, providers, transcript, zoom
+from shera import config, db, ledger, media, profiles, providers, transcript, zoom
 
 _running = set()
 _lock = threading.Lock()
@@ -36,25 +37,29 @@ def _write(path, data):
     tmp.replace(path)
 
 
-def start_job(src_mp4, vtt=None, audio=None):
+def start_job(src_mp4, vtt=None, audio=None, profile=None):
     """audio: optional separate recording of the class sound (Zoom M4A); it replaces the video's own audio."""
     job_id = uuid.uuid4().hex[:12]
-    db.x("INSERT INTO jobs(id, created, title, source_path, vtt_path, audio_path, stage, status, progress, flags) "
-         "VALUES (?, ?, ?, ?, ?, ?, 'import', 'running', 0, '[]')",
-         job_id, time.time(), Path(src_mp4).stem, str(src_mp4), str(vtt) if vtt else None, str(audio) if audio else None)
+    profile = profiles.resolve(profile)
+    db.x("INSERT INTO jobs(id, created, title, source_path, vtt_path, audio_path, stage, status, progress, flags, profile) "
+         "VALUES (?, ?, ?, ?, ?, ?, 'import', 'running', 0, '[]', ?)",
+         job_id, time.time(), Path(src_mp4).stem, str(src_mp4), str(vtt) if vtt else None, str(audio) if audio else None,
+         json.dumps(profile, ensure_ascii=False))
     _spawn(job_id)
     return job_id
 
 
-def start_zoom_job(meeting_uuid, title, mp4, vtt=None, m4a=None):
+def start_zoom_job(meeting_uuid, title, mp4, vtt=None, m4a=None, profile=None):
     """A Zoom cloud recording: the chosen files (Zoom file ids) are downloaded into the job folder by _import,
     after which the job reads them exactly like a local import."""
     job_id = uuid.uuid4().hex[:12]
     d = job_dir(job_id)
-    db.x("INSERT INTO jobs(id, created, title, source_path, vtt_path, audio_path, stage, status, progress, flags, zoom) "
-         "VALUES (?, ?, ?, ?, ?, ?, 'import', 'running', 0, '[]', ?)",
+    profile = profiles.resolve(profile)
+    db.x("INSERT INTO jobs(id, created, title, source_path, vtt_path, audio_path, stage, status, progress, flags, zoom, profile) "
+         "VALUES (?, ?, ?, ?, ?, ?, 'import', 'running', 0, '[]', ?, ?)",
          job_id, time.time(), title, str(d / "source.mp4"), str(d / "source.vtt") if vtt else None,
-         str(d / "zoom.m4a") if m4a else None, json.dumps({"uuid": meeting_uuid, "mp4": mp4, "vtt": vtt, "m4a": m4a}))
+         str(d / "zoom.m4a") if m4a else None, json.dumps({"uuid": meeting_uuid, "mp4": mp4, "vtt": vtt, "m4a": m4a}),
+         json.dumps(profile, ensure_ascii=False))
     _spawn(job_id)
     return job_id
 
@@ -89,7 +94,7 @@ def run(job_id):
         _running.add(job_id)
     try:
         db.update_job(job_id, status="running", error=None)
-        for stage in (_import, _transcript, _authorize, _transcribe, _translate, _candidates, _score, _prepare):
+        for stage in (_import, _transcript, _authorize, _transcribe, _translate, _criteria, _candidates, _score, _prepare):
             if stage(job_id) is False:
                 return  # waiting for the operator
         db.update_job(job_id, stage="review", status="done", progress=1.0)
@@ -201,11 +206,17 @@ def _units(job_id):
     return _read(job_dir(job_id) / "transcript.json")["units"]
 
 
+def job_profile(job_id):
+    return db.get_job(job_id)["profile"] or profiles.resolve("ielts")
+
+
 def estimate(job_id):
     """Estimate breakdown shown before authorization: USD per paid step plus the window count."""
     job = db.get_job(job_id)
     has_t = (job_dir(job_id) / "transcript.json").exists()
-    windows = len(cand.build_windows(_units(job_id))) if has_t else int(job["duration"] // 30) + 1
+    profile = job_profile(job_id)
+    windows = len(cand.build_windows(_units(job_id), profile["min_s"], profile["target_s"], profile["max_s"])) \
+        if has_t else int(job["duration"] // 30) + 1
     return {"transcription": 0.0 if has_t else job["duration"] / 60 * config.STT_USD_PER_MIN,
             "translation": job["duration"] / 60 * config.TRANSLATE_USD_PER_MIN,
             "ranking": config.JEV_EST_USD * windows, "drafts": config.DRAFT_EST_USD * 10, "windows": windows}
@@ -282,13 +293,32 @@ def _join(units, key):
     return " ".join(u.get(key) or u["text"] for u in units)
 
 
+def _criteria(job_id):
+    profile = job_profile(job_id)
+    if not profile["suggest_criteria"] or profile["criteria_confirmed"]:
+        return
+    units = _units(job_id)
+    if not units:
+        raise ValueError("The transcript has no speech to use for AI criteria.")
+    points = sorted({0, len(units) // 4, len(units) // 2, 3 * len(units) // 4, len(units) - 1})
+    description = json.dumps({"goal": profile["intent"], "current_profile": profile,
+                              "transcript_samples": [units[i] for i in points]}, ensure_ascii=False)
+    proposed = suggest_profile(job_id, description, key="profile:auto")
+    profile = profiles.resolve({**profile, **proposed, "suggest_criteria": True,
+                                "criteria_proposed": True, "criteria_confirmed": False})
+    db.update_job(job_id, profile=profile, stage="criteria", status="waiting", progress=1)
+    return False
+
+
 def _candidates(job_id):
     if db.candidates(job_id):
         return
     db.update_job(job_id, stage="candidates")
     units = _units(job_id)
+    profile = job_profile(job_id)
     rows = [(job_id, u0, u1, units[u0]["start"], units[u1]["end"], _join(units[u0:u1 + 1], "text"),
-             _join(units[u0:u1 + 1], "en")) for u0, u1 in cand.build_windows(units)]
+             _join(units[u0:u1 + 1], "en")) for u0, u1 in cand.build_windows(
+                 units, profile["min_s"], profile["target_s"], profile["max_s"])]
     with db.LOCK:  # all rows or none
         c = db.connect()
         c.execute("BEGIN")
@@ -299,16 +329,19 @@ def _candidates(job_id):
 def _score(job_id):
     db.update_job(job_id, stage="score", progress=0)
     cands = db.candidates(job_id)
+    profile = job_profile(job_id)
     for n, c in enumerate(cands):
         if c["score"] is None:
-            r = ledger.call(job_id, f"jev2:{c['id']}", "jev", config.JEV_EST_USD,
-                            lambda c=c: providers.jev_score(c["text_en"] or c["text"], c["text"]))
+            r = ledger.call(job_id, f"jev3:{profiles.fingerprint(profile)}:{c['id']}", "jev", config.JEV_EST_USD,
+                            lambda c=c: _profile_call(providers.jev_score, c["text_en"] or c["text"], c["text"],
+                                                      profile=profile))
             db.x("UPDATE candidates SET value=?, clarity=?, opening=?, category=?, score=?, teacher=?, complete=?, "
                  "jev=? WHERE id=?", r["value"], r["clarity"], r["opening"], r["category"],
-                 cand.rank_score(r["value"], r["clarity"], r["opening"], r.get("postable")), r["teacher"], r["complete"],
+                 cand.rank_score(r["value"], r["clarity"], r["opening"], r.get("postable"), profile),
+                 r["teacher"], r["complete"],
                  json.dumps(r["raw"], ensure_ascii=False), c["id"])
         db.update_job(job_id, progress=(n + 1) / len(cands))
-    ids = cand.shortlist(db.candidates(job_id))
+    ids = cand.shortlist(db.candidates(job_id), profile=profile)
     db.x("UPDATE candidates SET shortlisted=0, rank=NULL WHERE job_id=?", job_id)
     for rank, cid in enumerate(ids, 1):
         db.x("UPDATE candidates SET shortlisted=1, rank=? WHERE id=?", rank, cid)
@@ -340,9 +373,11 @@ def draft(cid):
     """Paid posting draft for one candidate; a provider failure is stored, never replaced by made-up text.
     Text the operator typed meanwhile is never overwritten."""
     c = db.candidate(cid)
+    profile = job_profile(c["job_id"])
     try:
         d = ledger.call(c["job_id"], f"draft:{cid}", "draft", config.DRAFT_EST_USD,
-                        lambda: providers.draft_post(c["text"], c["category"], c["text_en"]))
+                        lambda: _profile_call(providers.draft_post, c["text"], c["category"], c["text_en"],
+                                              profile=profile))
     except ledger.ProviderError as e:
         d = {"error": str(e)}
     with db.LOCK:
@@ -354,6 +389,18 @@ def draft(cid):
             fields["title"] = (d["youtube"]["title"] or d["facebook"]["title"]).strip()
         db.update_review(cid, **fields)
     return d
+
+
+def _profile_call(fn, *args, profile):
+    if "profile" in inspect.signature(fn).parameters:
+        return fn(*args, profile=profile)
+    return fn(*args)
+
+
+def suggest_profile(job_id, description, key=None):
+    key = key or "profile:" + hashlib.sha1(description.encode()).hexdigest()[:16]
+    return ledger.call(job_id, key, "profile", config.PROFILE_EST_USD,
+                       lambda: providers.suggest_profile(description))
 
 
 def _prepare(job_id):

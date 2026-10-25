@@ -116,3 +116,14 @@ Public hosting, cloud database, user accounts, cross-device sync, public webhook
 - The first one-class workflow may be called a prototype. The publish-ready claim requires all real-class and platform gates above.
 - The owner approved the product decisions through a four-round `grill-me` interview on 2026-09-25. Changes to them require a linked decision record and owner approval.
 - Official references: [Zoom cloud recording API](https://developers.zoom.us/docs/api/meetings/), [Zoom transcription limits](https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0065911), [OpenRouter Jev guide](https://openrouter.ai/blog/tutorials/how-to-use-jev/), [OpenRouter speech-to-text guide](https://openrouter.ai/docs/guides/overview/multimodal/stt), and [FFmpeg documentation](https://ffmpeg.org/ffmpeg.html). API availability and pricing must be rechecked at implementation time.
+
+## Owner direction update: 2026-10-01
+
+The owner generalized Shera Clip to videos beyond IELTS and requested a Sites
+interface with local processing on each user’s computer. Built-in presets,
+user-defined criteria, and AI-proposed criteria control clip selection; all
+candidates remain navigable alongside the shortlist. This supersedes the
+IELTS-only scope and laptop-only interface, while preserving explicit clip
+approval, provenance, spend authorization, durable local jobs, and honest
+quality evidence. IELTS remains a preset. Current supported imports and
+transcript-only limitations are documented in [Sites companion](sites-companion.md).

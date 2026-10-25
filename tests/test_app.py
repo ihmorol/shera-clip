@@ -110,7 +110,7 @@ def test_empty_shortlist_state(client):
     job_id, cid = make_job()
     db.x("UPDATE candidates SET shortlisted=0, rank=NULL")
     html = client.get(f"/jobs/{job_id}").text
-    assert "No postable moments in this class" in html and "Other moments (1)" in html
+    assert "No postable moments in this video" in html and "Other moments (1)" in html
 
 
 def test_review_save_round_trip_persists(client):
@@ -250,7 +250,7 @@ def test_import_takes_zoom_audio_and_browse_lists_by_type(client, tmp_path, monk
     mp4.write_bytes(b"x")
     m4a.write_bytes(b"x")
     started = []
-    monkeypatch.setattr(pipeline, "start_job", lambda *a: started.append(a) or "j9")
+    monkeypatch.setattr(pipeline, "start_job", lambda *a, **kwargs: started.append(a) or "j9")
     r = client.post("/import", data={"mp4": str(mp4), "m4a": str(tmp_path / "nope.m4a")})
     assert r.status_code == 400 and "Zoom audio not found" in r.text
     r = client.post("/import", data={"mp4": str(mp4), "m4a": str(m4a)}, follow_redirects=False)

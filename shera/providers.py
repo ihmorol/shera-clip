@@ -4,7 +4,7 @@ from pathlib import Path
 
 import httpx
 
-from shera import config
+from shera import config, profiles
 from shera.ledger import ProviderError
 
 JEV_URL = "https://openrouter.ai/api/alpha/decisions"
@@ -106,6 +106,19 @@ DRAFT_SYSTEM = (
     'Reply with JSON only: {"facebook":{"title":"","description":"","cta":""},'
     '"youtube":{"title":"","description":"","cta":""}}'
 )
+GENERIC_DRAFT_SYSTEM = (
+    "You write short posting drafts for a video clip. Use only what the excerpt says and keep its language. "
+    "Never invent names, results, credentials, links, claims, or context. "
+    "Do not include logos, handles, @mentions, brand hashtags, or URLs. Keep the call to action modest. "
+    'Reply with JSON only: {"facebook":{"title":"","description":"","cta":""},'
+    '"youtube":{"title":"","description":"","cta":""}}'
+)
+PROFILE_SYSTEM = (
+    "Design clip-selection criteria for the supplied video description or transcript sample. "
+    "Choose the closest preset from general, education, interview, product, story, and ielts. "
+    "Return JSON only with preset, intent, criteria (up to 8 short checks), min_s, target_s, and max_s. "
+    "Durations must be whole seconds with 5 <= min_s <= target_s <= max_s <= 600."
+)
 
 
 def _key(name, value):
@@ -122,18 +135,59 @@ def _openrouter(url, body):
     return data, (data.get("usage") or {}).get("cost")
 
 
-def jev_score(excerpt, original=None):
+def _jev_questions(profile):
+    if profile is None or profiles.resolve(profile)["preset"] == "ielts":
+        return JEV_QUESTIONS
+    p = profiles.resolve(profile)
+    checks = " ".join(f"Also consider: {v}" for v in p["criteria"])
+    return {
+        "value": {"type": "score", "instructions": f"How strongly does `excerpt` serve this goal: {p['intent']} {checks}",
+                  "criteria": ["No relevant value.", "Weak or mostly filler.", "Some worthwhile content.",
+                               "Strong, specific content.", "Exceptional content for the stated goal."]},
+        "clarity": {"type": "score", "instructions": "Does `excerpt` stand alone for a viewer who missed the rest?",
+                    "criteria": ["Cannot be understood alone.", "Mostly depends on missing context.",
+                                 "Understandable with some unclear references.", "Stands alone with minor gaps.",
+                                 "Fully self-contained and complete."]},
+        "opening": {**JEV_QUESTIONS["opening"],
+                    "instructions": "Does the first sentence or action make a viewer want to continue?"},
+        "teacher": {"type": "noul",
+                    "instructions": "Is `excerpt` part of the video's primary intended content, rather than an "
+                                    "embedded recording, repeated playback, accidental noise, or unrelated insert?",
+                    "criteria": {"true": "Primary intended content.", "false": "Embedded or unrelated content."}},
+        "complete": {"type": "noul", "instructions": "Does `excerpt` reach a natural ending or payoff?",
+                     "criteria": {"true": "It reaches a natural ending.", "false": "It stops mid-moment."}},
+        "postable": {"type": "score",
+                     "instructions": f"How well would `excerpt` work alone as a short video for this goal: {p['intent']} {checks}",
+                     "criteria": ["Not usable alone.", "Weak or fragmentary.", "Usable.",
+                                  "Strong and worth sharing.", "Exceptional and immediately shareable."]},
+        "takeaway": {"type": "noul", "instructions": "Does `excerpt` deliver a distinct idea, event, emotion, or result?",
+                     "criteria": {"true": "There is a distinct payoff.", "false": "There is no distinct payoff."}},
+        "offtopic": {"type": "noul", "instructions": f"Is `excerpt` unrelated to this selection goal: {p['intent']}?",
+                     "criteria": {"true": "Unrelated or filler.", "false": "Relevant to the goal."}},
+        "private": {"type": "noul",
+                    "instructions": "Does `excerpt` reveal a real person's private or sensitive details?",
+                    "criteria": {"true": "It reveals private details.", "false": "It does not reveal private details."}},
+        "category": {"type": "choice", "instructions": "Which primary category best fits `excerpt`?",
+                     "criteria": p["categories"]},
+    }
+
+
+def jev_score(excerpt, original=None, profile=None):
     """Jev reads the English excerpt; the words as spoken ride along when they differ.
     -> scores, the teacher/complete probabilities, the category, and Jev's full answers ("raw")."""
     state = {"excerpt": excerpt, **({"original": original} if original and original != excerpt else {})}
-    data, cost = _openrouter(JEV_URL, {"model": "typesafe/jev-1.13", "state": state, "questions": JEV_QUESTIONS})
+    questions = _jev_questions(profile)
+    data, cost = _openrouter(JEV_URL, {"model": "typesafe/jev-1.13", "state": state, "questions": questions})
     try:
         a = data["answers"]
         out = {q: round(float(a[q]["score"]), 2) for q in SCORES}
         out.update({q: round(float(a[q]["noul"]), 3) for q in NOULS})
-        out["category"], out["skill"] = a["category"]["choice"], a["skill"]["choice"]
+        out["category"] = a["category"]["choice"]
+        if "skill" in questions:
+            out["skill"] = a["skill"]["choice"]
         out["raw"] = a
-        if (out["category"] not in CATEGORIES or out["skill"] not in SKILLS
+        categories = CATEGORIES if profile is None else profiles.resolve(profile)["categories"]
+        if (out["category"] not in categories or ("skill" in out and out["skill"] not in SKILLS)
                 or not all(0 <= out[q] <= 4 for q in SCORES) or not all(0 <= out[q] <= 1 for q in NOULS)):
             raise ValueError({k: v for k, v in out.items() if k != "raw"})
     except (KeyError, TypeError, ValueError) as e:
@@ -200,14 +254,16 @@ def translate(lines):
     return {"en": en}, cost
 
 
-def draft_post(excerpt, category, english=None):
+def draft_post(excerpt, category, english=None, profile=None):
     help_en = f"\n\nEnglish translation (for understanding only):\n{english}" if english and english != excerpt else ""
+    p = profiles.resolve(profile, default="ielts")
+    context = f"Selection goal: {p['intent']}\n" if p["preset"] != "ielts" else ""
     data, cost = _openrouter(CHAT_URL, {
         "model": config.DRAFT_MODEL,
         "response_format": {"type": "json_object"},
         "usage": {"include": True},
-        "messages": [{"role": "system", "content": DRAFT_SYSTEM},
-                     {"role": "user", "content": f"Category: {category}\n\nExcerpt:\n{excerpt}{help_en}"}],
+        "messages": [{"role": "system", "content": DRAFT_SYSTEM if p["preset"] == "ielts" else GENERIC_DRAFT_SYSTEM},
+                     {"role": "user", "content": f"{context}Category: {category}\n\nExcerpt:\n{excerpt}{help_en}"}],
     })
     try:
         out = json.loads(data["choices"][0]["message"]["content"])
@@ -216,4 +272,20 @@ def draft_post(excerpt, category, english=None):
             raise ValueError("fields must be strings")
     except (KeyError, TypeError, IndexError, ValueError) as e:
         raise ProviderError(f"draft: unexpected answer shape ({e!r})", billed=True, cost=cost) from e
+    return out, cost
+
+
+def suggest_profile(description):
+    data, cost = _openrouter(CHAT_URL, {
+        "model": config.DRAFT_MODEL,
+        "response_format": {"type": "json_object"},
+        "usage": {"include": True},
+        "messages": [{"role": "system", "content": PROFILE_SYSTEM},
+                     {"role": "user", "content": description}],
+    })
+    try:
+        proposed = json.loads(data["choices"][0]["message"]["content"])
+        out = profiles.resolve(proposed)
+    except (KeyError, TypeError, IndexError, ValueError, json.JSONDecodeError) as e:
+        raise ProviderError(f"profile: unexpected answer shape ({e!r})", billed=True, cost=cost) from e
     return out, cost

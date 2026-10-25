@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Clip {{ c.rank or c.id }} · {{ job.title }}{% endblock %}
-{% block crumbs %}<a href="/">Classes</a><span aria-hidden="true">/</span><a href="/jobs/{{ job.id }}">{{ job.title }}</a><span aria-hidden="true">/</span><span>{{ 'Clip ' ~ c.rank if c.rank else 'Moment' }} · {{ c.start|t }}</span>{% endblock %}
+{% block crumbs %}<a href="/">Video library</a><span aria-hidden="true">/</span><a href="/jobs/{{ job.id }}">{{ job.title }}</a><span aria-hidden="true">/</span><span>{{ 'Clip ' ~ c.rank if c.rank else 'Moment' }} · {{ c.start|t }}</span>{% endblock %}
 {% block main %}
 <div class="review" id="review" data-base="/jobs/{{ job.id }}/clips/{{ c.id }}"
      data-prev="{{ '/jobs/%s/clips/%s'|format(job.id, prev) if prev else '' }}" data-next="{{ '/jobs/%s/clips/%s'|format(job.id, next) if next else '' }}">
@@ -29,7 +29,7 @@
     <div class="bounds">
       {% for side in ('start', 'end') %}
       <fieldset>
-        <legend>{{ side|capitalize }} <span class="muted">(seconds into the class)</span></legend>
+        <legend>{{ side|capitalize }} <span class="muted">(seconds into the video)</span></legend>
         <input type="number" id="{{ side }}" step="0.1" min="0" max="{{ job.duration }}" value="{{ rv[side] }}" data-field aria-label="{{ side|capitalize }} seconds">
         <div class="nudge">
           <button type="button" data-nudge="{{ side }}" data-unit="-1" title="Snap to the previous transcript line">− line</button>
@@ -47,7 +47,7 @@
     <summary><span class="step num">2</span>Title and captions</summary>
     <div class="grid-form">
       <label for="title">Title on the portrait video</label>
-      <input id="title" data-field value="{{ rv.title or '' }}" placeholder="Optional, shown above the slide">
+      <input id="title" data-field value="{{ rv.title or '' }}" placeholder="Optional, shown above the video">
     </div>
     <table class="captions">
       <thead><tr><th scope="col">From (s)</th><th scope="col">To (s)</th><th scope="col">Caption, as spoken</th><th scope="col"><span class="sr">Delete</span></th></tr></thead>
@@ -66,15 +66,15 @@
   <details class="panel trim" {% if (rv.layout or {}).get('mode') == 'crop' %}open{% endif %}>
     {% set lay = rv.layout or {'mode': 'full'} %}
     <summary><span class="step num">3</span>Portrait framing <span class="muted">— {{ 'custom crop' if lay.mode == 'crop' else 'whole frame' }}</span></summary>
-    <p class="muted">Whole frame fits the full recording into the phone screen. If slide text is too small in the portrait preview, crop to the slide instead. The landscape version always shows the whole frame.</p>
+    <p class="muted">Whole frame fits the full recording into the phone screen. Crop only if the important content stays visible in the portrait preview. The landscape version always shows the whole frame.</p>
     <fieldset class="radios"><legend class="sr">Framing</legend>
       <label><input type="radio" name="mode" value="full" data-field {% if lay.mode != 'crop' %}checked{% endif %}> Whole frame</label>
-      <label><input type="radio" name="mode" value="crop" data-field {% if lay.mode == 'crop' %}checked{% endif %}> Crop to the slide</label>
+      <label><input type="radio" name="mode" value="crop" data-field {% if lay.mode == 'crop' %}checked{% endif %}> Custom crop</label>
     </fieldset>
     <div id="crop-fields" {% if lay.mode != 'crop' %}hidden{% endif %}>
       <p class="muted">Values are fractions of the recording: x and y are the top-left corner, w and h the size (0 to 1).</p>
       {% for box, vals in (('crop', lay.crop or [0, 0, 1, 1]), ('inset', lay.inset or [0.75, 0, 0.25, 0.25])) %}
-      <fieldset class="box"><legend>{% if box == 'inset' %}<label><input type="checkbox" id="use-inset" data-field {% if lay.inset %}checked{% endif %}> Also show the teacher’s camera</label>{% else %}Slide area{% endif %}</legend>
+      <fieldset class="box"><legend>{% if box == 'inset' %}<label><input type="checkbox" id="use-inset" data-field {% if lay.inset %}checked{% endif %}> Also show the speaker inset</label>{% else %}Source crop{% endif %}</legend>
         {% for n in ('x', 'y', 'w', 'h') %}
         <label>{{ n }} <input type="number" step="0.01" min="0" max="1" id="{{ box }}-{{ n }}" value="{{ vals[loop.index0] }}" data-field></label>
         {% endfor %}
@@ -93,12 +93,12 @@
         {% for k, label in CATEGORIES.items() %}<option value="{{ k }}" {% if rv.category == k %}selected{% endif %}>{{ label }}</option>{% endfor %}
       </select>
       <label for="tags">Tags <span class="muted">(comma-separated)</span></label>
-      <input id="tags" data-field value="{{ (rv.tags or [])|join(', ') }}" placeholder="Writing, Task 2, Band 6–7">
+      <input id="tags" data-field value="{{ (rv.tags or [])|join(', ') }}" placeholder="Interview, advice, product">
     </div>
     {% if d.error %}<p class="alert fail">The AI draft failed: {{ d.error }}</p>{% endif %}
     {% if not d or d.error %}
       <p class="tools">{% if not d %}<span class="muted">No posting text yet.</span>{% endif %}
-        <button type="button" id="draft-run" {% if drafting %}disabled title="Posting text is being drafted for this class now"{% endif %}>Write a draft with AI (paid, about $0.002)</button>
+        <button type="button" id="draft-run" {% if drafting %}disabled title="Posting text is being drafted for this video now"{% endif %}>Write a draft with AI (paid, about $0.002)</button>
         <span id="draft-status" class="muted" role="status"></span></p>
     {% endif %}
     <div class="posts">
@@ -148,7 +148,7 @@
     <div class="about" tabindex="0" aria-labelledby="about-h">
       <h3 id="about-h">About this clip</h3>
       {% if about.what or about.summary %}
-      <p><strong>{{ about.what or 'What it teaches' }}</strong>{% if about.summary %}<br><span class="muted">{{ about.summary }}</span>{% endif %}
+      <p><strong>{{ about.what or 'What this clip covers' }}</strong>{% if about.summary %}<br><span class="muted">{{ about.summary }}</span>{% endif %}
         <span class="src">AI draft</span></p>
       {% endif %}
       <p>Opens with: <q>{{ about.opens }}</q>{% if about.opens_en %}<span class="en">{{ about.opens_en }}</span>{% endif %}</p>
@@ -178,8 +178,8 @@
       <h4>Check before approving</h4>
       <ol class="checks">
         <li>It starts and ends on a complete sentence. If not, use <em>− line / + line</em> in step 1.</li>
-        <li>Someone who never saw the class would understand it.</li>
-        <li>The slide text is readable in the portrait preview. If not, crop in step 3.</li>
+        <li>Someone who never saw the video would understand it.</li>
+        <li>Important visual content is readable in the portrait preview. If not, crop in step 3.</li>
         <li>The captions match what is said, and the title says what the viewer learns (step 2).</li>
         <li>The sound is clear and in sync with the picture.</li>
       </ol>

@@ -1,95 +1,180 @@
 {% extends "base.html" %}
-{% block main %}
-<div class="page-head">
-  <h1>Turn a class into clips</h1>
-  <p class="lede">Pick a class recording. Shera Clip finds its best teaching moments; you watch each one, trim it, and approve the ones worth posting.</p>
+
+{% macro selection(prefix) %}
+
+<div class="selection-fields">
+
+  <label for="{{ prefix }}-preset">What kind of moments?<select id="{{ prefix }}-preset" name="preset">{% for key, preset in PRESETS.items() %}<option value="{{ key }}" {% if form.preset == key %}selected{% endif %}>{{ preset.label }}</option>{% endfor %}</select></label>
+
+  <label for="{{ prefix }}-intent">What should the clips focus on? <span class="muted">Optional</span><textarea id="{{ prefix }}-intent" name="intent" rows="2" placeholder="For example: practical advice with a clear takeaway">{{ form.intent or '' }}</textarea></label>
+
+  <details class="import-options"><summary>Clip length and AI criteria</summary>
+
+    <div class="length-fields">
+
+    {% for key, label, value in [('min_s', 'Minimum', 30), ('target_s', 'Target', 60), ('max_s', 'Maximum', 90)] %}
+
+    <label for="{{ prefix }}-{{ key }}">{{ label }} (seconds)<input type="number" id="{{ prefix }}-{{ key }}" name="{{ key }}" min="5" max="600" step="1" value="{{ form[key] or value }}"></label>
+
+    {% endfor %}
+
+    </div>
+
+    <label class="check-label"><input type="checkbox" name="suggest_criteria" value="true" {% if form.suggest_criteria %}checked{% endif %}>Let AI propose selection criteria for me to review</label>
+
+  </details>
+
 </div>
 
-{% if false in setup.values() %}
-<section class="panel alert attn" aria-labelledby="setup-h">
-  <h2 id="setup-h">Finish setup first</h2>
-  <ul class="plain">
-    {% for name, ok in setup.items() if not ok %}
-    <li><strong>{{ name }}</strong> is missing: {% if name == 'FFmpeg' %}install FFmpeg and put <span class="mono">ffmpeg</span> and <span class="mono">ffprobe</span> on PATH{% else %}add <span class="mono">OPENROUTER_API_KEY</span> to <span class="mono">.env</span>, then restart Shera Clip{% endif %}.</li>
+{% endmacro %}
+
+{% macro library() %}
+
+<section class="library" aria-labelledby="jobs-h">
+
+  <div class="head-row"><div><h2 id="jobs-h">Your video library</h2><p class="muted">Pick up where you left off.</p></div><a class="button" href="#import-h">Import another video</a></div>
+
+  <div class="library-tools">
+
+    <label for="library-search">Find a video<input type="search" id="library-search" placeholder="Search by title" data-library-search></label>
+
+    <label for="library-status">Status<select id="library-status" data-library-status><option value="">All videos</option value="running">Processing</option><option value="waiting">Needs review</option><option value="paused">Paused</option><option value="done">Finished</option><option value="failed">Needs attention</option></select></label>
+
+  </div>
+
+  <ul class="video-library">
+
+    {% for j in jobs %}
+
+    <li data-library-item data-title="{{ j.title|lower }}" data-status="{{ j.status }}">
+
+      <div class="library-main"><svg class="i" aria-hidden="true"><use href="#i-film"/></svg><div><h3><a href="/jobs/{{ j.id }}">{{ j.title }}</a></h3><p class="muted"><span class="local-time" data-ts="{{ j.created }}">{{ j.created|int }}</span> · {{ STAGE_LABELS.get(j.stage, j.stage) }}</p></div></div>
+
+      <div class="library-meta"><span class="badge s-{{ j.status }}">{{ STATUS_LABELS.get(j.status, j.status) }}</span><span class="muted">{{ j.spent|usd }} spent · {{ j.disk|bytes }}</span><a class="button small" href="/jobs/{{ j.id }}">Open video</a></div>
+
+    </li>
+
     {% endfor %}
+
   </ul>
+
+  <p class="muted" data-library-empty hidden>No videos match. Try another title or status.</p>
+
 </section>
+
+{% endmacro %}
+
+{% block main %}
+
+<div class="page-head home-head"><div><h1>Your next great clip starts here</h1><p class="lede">Import a video, choose what matters, then review and export your best moments.</p></div><span class="local-note">Video processing runs on this computer</span></div>
+
+{% if false in setup.values() %}
+
+<section class="panel alert attn" aria-labelledby="setup-h">
+
+  <h2 id="setup-h">Finish setup first</h2>
+
+  <ul class="plain">
+
+    {% for name, ok in setup.items() if not ok %}
+
+    <li><strong>{{ name }}</strong> is missing: {% if name == 'FFmpeg' %}install FFmpeg and put <span class="mono">ffmpeg</span> and <span class="mono">ffprobe</span> on PATH{% else %}add <span class="mono">OPENROUTER_API_KEY</span> to <span class="mono">.env</span>, then restart Shera Clip{% endif %}.</li>
+
+    {% endfor %}
+
+  </ul>
+
+</section>
+
 {% endif %}
 
-<section class="panel" aria-labelledby="import-h">
-  <h2 id="import-h">Import a class</h2>
+
+
+
+
+{% if jobs %}{{ library() }}{% endif %}
+
+<section class="panel import-panel" aria-labelledby="import-h">
+
+  <div class="head-row"><div><h2 id="import-h">Import a video</h2><p class="muted">Choose a recording saved on your computer.</p></div><a href="/zoom">Import from Zoom</a></div>
+
   {% if error %}<p class="alert fail" role="alert">{{ error }}</p>{% endif %}
-  <p><a class="button" href="/zoom"><svg class="i" aria-hidden="true"><use href="#i-reel"/></svg>Choose from Zoom cloud recordings</a> <span class="muted">or pick files saved on this laptop:</span></p>
-  <form method="post" action="/import" class="import-form">
-    <label for="mp4">Class video <span class="muted">(.mp4)</span></label>
-    <div class="pick">
-      <input id="mp4" name="mp4" value="{{ form.mp4 or '' }}" placeholder="Choose a file, or paste its full path" autocomplete="off" spellcheck="false">
-      <button type="button" data-choose="mp4" data-ext=".mp4"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg>Choose…</button>
-    </div>
-    <label for="m4a">Zoom audio <span class="muted">(.m4a, recommended — the class's real sound; it replaces the video's own audio and is lined up automatically)</span></label>
-    <div class="pick">
-      <input id="m4a" name="m4a" value="{{ form.m4a or '' }}" placeholder="Choose the audio file Zoom saved for this class" autocomplete="off" spellcheck="false">
-      <button type="button" data-choose="m4a" data-ext=".m4a"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg>Choose…</button>
-    </div>
-    <label for="vtt">Zoom transcript <span class="muted">(.vtt, optional — without it the audio is transcribed for a few cents)</span></label>
-    <div class="pick">
-      <input id="vtt" name="vtt" value="{{ form.vtt or '' }}" placeholder="Paste the .vtt path if you have one" autocomplete="off" spellcheck="false">
-      <button type="button" data-choose="vtt" data-ext=".vtt"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg>Choose…</button>
-    </div>
-    <div><button type="submit" class="primary">Import class</button></div>
+
+  <form method="post" action="/import/upload" enctype="multipart/form-data" class="import-form">
+
+    <label for="video">Video file</label><input type="file" id="video" name="video" accept=".mp4,video/mp4" required aria-describedby="video-help">
+
+    <p id="video-help" class="muted help">MP4 recording. Your source stays on this computer; transcription and AI analysis use your configured provider.</p>
+
+    {{ selection('upload') }}
+
+    <details class="import-options"><summary>Add a transcript or separate audio</summary><p class="muted help">Use an existing transcript to skip transcription. Separate audio replaces the video's sound and is aligned automatically.</p>
+
+      <label for="vtt-file">Transcript (.vtt)</label><input type="file" id="vtt-file" name="vtt_file" accept=".vtt">
+
+      <label for="audio-file">Separate audio (.m4a)</label><input type="file" id="audio-file" name="audio_file" accept=".m4a,audio/mp4">
+
+    </details>
+
+    <div class="actions-row"><button type="submit" class="primary">Import and find moments</button><span class="muted help">You review clips before exporting.</span></div>
+
   </form>
 
-  {% if inbox %}
-  <h3>Or pick from the inbox folder <span class="muted mono">{{ inbox_dir }}</span></h3>
-  <ul class="rows">
-    {% for f in inbox %}
-    <li class="row">
-      <svg class="i lead" aria-hidden="true"><use href="#i-film"/></svg>
-      <span class="grow"><strong>{{ f.path.name }}</strong>
-        <span class="muted">· {{ f.size|bytes }} · {% if f.m4a %}with Zoom audio{% else %}no Zoom audio{% endif %} · {% if f.vtt %}with transcript{% else %}no transcript{% endif %}</span></span>
-      <form method="post" action="/import">
-        <input type="hidden" name="mp4" value="{{ f.path }}">
-        <input type="hidden" name="vtt" value="{{ f.vtt or '' }}">
-        <input type="hidden" name="m4a" value="{{ f.m4a or '' }}">
-        <button type="submit">Import</button></form>
-    </li>
-    {% endfor %}
-  </ul>
-  {% endif %}
+  <details class="import-alternative"><summary>Download from a direct video link</summary><p class="muted help">Use a link to the video file itself. YouTube and other platform watch pages are not supported here.</p>
+
+    <form method="post" action="/import/url" class="import-form"><label for="video-url">Video URL</label><input type="url" name="url" id="video-url" placeholder="https://example.com/video.mp4" required>{{ selection('url') }}<div><button type="submit">Download and import</button></div></form>
+
+  </details>
+
+  <details class="import-alternative" {% if error and form.mp4 %}open{% endif %}><summary>Advanced: import by file path or inbox</summary>
+
+    <p class="muted help">Use files already on this computer without copying them through the browser.</p>
+
+    <form method="post" action="/import" class="import-form">
+
+      {% for key, label, ext in [('mp4', 'Video', '.mp4'), ('vtt', 'Transcript (optional)', '.vtt'), ('m4a', 'Separate audio (optional)', '.m4a')] %}
+
+      <label for="{{ key }}">{{ label }}</label><div class="pick"><input id="{{ key }}" name="{{ key }}" value="{{ form[key] or '' }}" placeholder="Choose a file or paste its full path" autocomplete="off" spellcheck="false" {% if key == 'mp4' %}required{% endif %}><button type="button" data-choose="{{ key }}" data-ext="{{ ext }}">Choose file</button></div>
+
+      {% endfor %}
+
+      {{ selection('path') }}<div><button type="submit">Import these files</button></div>
+
+    </form>
+
+    {% if inbox %}<h3>Inbox folder</h3><p class="muted mono">{{ inbox_dir }}</p><ul class="rows">{% for f in inbox %}<li class="row"><span class="grow"><strong>{{ f.path.name }}</strong><span class="muted"> · {{ f.size|bytes }}{% if f.vtt %} · with transcript{% endif %}{% if f.m4a %} · with separate audio{% endif %}</span></span><form method="post" action="/import"><input type="hidden" name="mp4" value="{{ f.path }}"><input type="hidden" name="vtt" value="{{ f.vtt or '' }}"><input type="hidden" name="m4a" value="{{ f.m4a or '' }}"><input type="hidden" name="preset" value="general"><button type="submit">Import</button></form></li>{% endfor %}</ul>{% endif %}
+
+  </details>
+
 </section>
+
+{% if not jobs %}<section class="library-empty" aria-labelledby="jobs-h"><h2 id="jobs-h">Your library is ready for its first video</h2><p class="muted">Imported videos will appear here with their progress, clips, and saved review decisions.</p></section>{% endif %}
 
 <dialog id="chooser" class="chooser" aria-labelledby="chooser-h">
+
   <h2 id="chooser-h">Choose a file</h2>
+
   <p id="chooser-path" class="mono muted"></p>
+
   <ul id="chooser-list" class="chooser-list"></ul>
+
   <p id="chooser-empty" class="muted" hidden>No folders or matching files here.</p>
+
   <p id="chooser-status" class="muted" hidden></p>
+
   <div class="chooser-actions">
+
     <button type="button" id="chooser-up" disabled><svg class="i" aria-hidden="true"><use href="#i-up"/></svg>Up one folder</button>
+
     <button type="button" id="chooser-cancel">Cancel</button>
+
   </div>
+
 </dialog>
 
-<section class="panel" aria-labelledby="jobs-h">
-  <h2 id="jobs-h">Your classes</h2>
-  {% if jobs %}
-  <table>
-    <thead><tr><th scope="col">Class</th><th scope="col" class="opt">Imported</th><th scope="col" class="opt">Step</th><th scope="col">State</th><th scope="col" class="num">Spent of ${{ '%.2f'|format(CAP) }}</th><th scope="col" class="num opt">On disk</th></tr></thead>
-    <tbody>
-    {% for j in jobs %}
-    <tr>
-      <td><a href="/jobs/{{ j.id }}">{{ j.title }}</a></td>
-      <td class="muted local-time opt" data-ts="{{ j.created }}">{{ j.created|int }}</td>
-      <td class="opt">{{ STAGE_LABELS.get(j.stage, j.stage) }}</td>
-      <td><span class="badge s-{{ j.status }}">{{ STATUS_LABELS.get(j.status, j.status) }}</span></td>
-      <td class="num">{{ j.spent|usd }}</td>
-      <td class="num muted opt">{{ j.disk|bytes }}</td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}<p class="muted">No classes yet. Import a recording above to start.</p>{% endif %}
-</section>
+
+
 {% endblock %}
 
 {% block scripts %}<script src="/static/chooser.js" defer></script>{% endblock %}
+

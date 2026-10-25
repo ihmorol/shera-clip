@@ -1,7 +1,7 @@
 """Deterministic candidate windows over whole transcript units (D17, D24)."""
 import re
 
-from shera import config
+from shera import config, profiles
 
 
 def build_windows(units, min_s=None, target_s=None, max_s=None, stride_s=30):
@@ -27,12 +27,18 @@ def build_windows(units, min_s=None, target_s=None, max_s=None, stride_s=30):
     return wins
 
 
-def rank_score(v, c, o, postable=None):
+def rank_score(v, c, o, postable=None, profile=None):
     """0..1. With Jev's "postable" answer (D26), usefulness as a standalone video leads the ranking."""
-    if postable is None:
+    if profile is None and postable is None:
         wv, wc, wo = config.WEIGHTS
         return wv * v / 4 + wc * c / 4 + wo * o / 4
-    return (0.30 * v + 0.20 * c + 0.10 * o + 0.40 * postable) / 4
+    if profile is None:
+        weights = {"value": 0.30, "clarity": 0.20, "opening": 0.10, "postable": 0.40}
+    else:
+        weights = profiles.resolve(profile)["weights"]
+    postable = v if postable is None else postable
+    return sum(weights[k] * x for k, x in zip(("value", "clarity", "opening", "postable"),
+                                               (v, c, o, postable))) / 4
 
 
 def is_teacher(c):
@@ -47,9 +53,11 @@ def jev(c, q):
     return None if v is None else float(v)
 
 
-def blocker(c):
+def blocker(c, profile=None):
     """Why Jev's answers rule a scored candidate out, in plain words, or None (mirrors shortlist)."""
-    if (c["value"] or 0) < 2 or (c["clarity"] or 0) < 2:
+    minimums = profiles.resolve(profile)["minimums"] if profile is not None else {
+        "value": 2, "clarity": 2, "postable": 2}
+    if (c["value"] or 0) < minimums["value"] or (c["clarity"] or 0) < minimums["clarity"]:
         return "low"
     if not is_teacher(c):
         return "recording"
@@ -57,17 +65,17 @@ def blocker(c):
         return "offtopic"
     if (jev(c, "private") or 0) >= 0.5:
         return "private"
-    if (jev(c, "postable") if jev(c, "postable") is not None else 4) < 2:
+    if (jev(c, "postable") if jev(c, "postable") is not None else 4) < minimums["postable"]:
         return "unpostable"
     return None
 
 
-def shortlist(cands, n=10):
+def shortlist(cands, n=10, profile=None):
     """cands: dicts with id, start, end, value, clarity, score, and optionally teacher, jev, text_en/text.
     Keeps teacher talk worth >= 2 on value and clarity that Jev finds postable, on-topic and free of student
     details, with no big time overlap and no repeated passage (a listening recording played twice).
     Returns kept ids in rank order (may be empty)."""
-    ok = [c for c in cands if blocker(c) is None]
+    ok = [c for c in cands if blocker(c, profile) is None]
     kept = []
     for c in sorted(ok, key=lambda c: (-c["score"], c["start"])):
         if len(kept) == n:

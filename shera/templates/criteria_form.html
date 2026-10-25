@@ -1,0 +1,12 @@
+<form method="post" action="/jobs/{{ job.id }}/criteria" class="criteria-form">
+  <label for="criteria-intent">What makes a useful clip for your audience?</label>
+  <textarea id="criteria-intent" name="intent" rows="3" required>{{ profile.intent }}</textarea>
+  <label for="criteria-checks">Selection checks <span class="muted">— one per line</span></label>
+  <textarea id="criteria-checks" name="criteria" rows="4" placeholder="Keep complete answers.&#10;Skip introductions and repeated points.">{{ profile.criteria|join('\n') }}</textarea>
+  <div class="duration-fields">
+    <label for="criteria-min">Minimum seconds<input id="criteria-min" name="min_s" type="number" min="5" max="600" value="{{ profile.min_s }}" required></label>
+    <label for="criteria-target">Target seconds<input id="criteria-target" name="target_s" type="number" min="5" max="600" value="{{ profile.target_s }}" required></label>
+    <label for="criteria-max">Maximum seconds<input id="criteria-max" name="max_s" type="number" min="5" max="600" value="{{ profile.max_s }}" required></label>
+  </div>
+  <button type="submit" class="primary">{{ 'Save criteria and continue' if job.stage == 'criteria' else 'Save criteria' }}</button>
+</form>

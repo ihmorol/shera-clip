@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% set refresh = job.status == 'running' %}
 {% block title %}{{ job.title }} · Shera Clip{% endblock %}
-{% block crumbs %}<a href="/">Classes</a><span aria-hidden="true">/</span><span>{{ job.title }}</span>{% endblock %}
+{% block crumbs %}<a href="/">Video library</a><span aria-hidden="true">/</span><span>{{ job.title }}</span>{% endblock %}
 {% block main %}
 {% set cur = STAGES.index(job.stage) if job.stage in STAGES else 0 %}
 <section class="panel" aria-labelledby="job-h">
@@ -29,6 +29,12 @@
     <div class="meter"><progress max="1" value="{{ job.progress or 0 }}" aria-label="Step progress"></progress><span class="num">{{ ((job.progress or 0) * 100)|round|int }}%</span></div>
   </div>
 
+  {% elif job.status == 'waiting' and job.stage == 'criteria' %}
+  <div class="next attn">
+    <h2>Review the AI's selection criteria</h2>
+    <p>These checks were proposed from this video's transcript and your goal. Edit anything before scoring begins.</p>
+    {% include "criteria_form.html" %}
+  </div>
   {% elif job.status == 'waiting' and est %}
   <div class="next attn">
     <h2>Approve the cost to continue</h2>
@@ -36,8 +42,8 @@
     <table class="compact">
       <tbody>
       <tr><th scope="row">Transcribe the audio <span class="muted">({{ stt_model }})</span></th><td class="num">{{ est.transcription|usd }}</td></tr>
-      <tr><th scope="row">Translate the Bangla into English <span class="muted">({{ translate_model }})</span></th><td class="num">{{ est.translation|usd }}</td></tr>
-      <tr><th scope="row">Ask Jev about {{ est.windows }} possible 60–90 s clips</th><td class="num">{{ est.ranking|usd }}</td></tr>
+      <tr><th scope="row">Prepare an English reading transcript <span class="muted">({{ translate_model }})</span></th><td class="num">{{ est.translation|usd }}</td></tr>
+      <tr><th scope="row">Rank {{ est.windows }} possible {{ profile.min_s }}–{{ profile.max_s }} s clips</th><td class="num">{{ est.ranking|usd }}</td></tr>
       <tr><th scope="row">Draft posting text for up to 10 clips</th><td class="num">{{ est.drafts|usd }}</td></tr>
       <tr class="total"><th scope="row">Estimate</th><td class="num">{{ (est.transcription + est.translation + est.ranking + est.drafts)|usd }}</td></tr>
       </tbody>
@@ -74,7 +80,7 @@
       <form method="get" action="/jobs/{{ job.id }}/export"><button type="submit" {% if approved and not todo %}class="primary"{% endif %} {% if not approved %}disabled title="Approve at least one clip first"{% endif %}>Export {{ approved }} approved</button></form>
     </div>
     {% else %}
-    <p><strong>No postable moments in this class.</strong> Jev found no teacher talk that is on-topic, useful on its own, and at least 2 of 4 for teaching value and clarity, so nothing is suggested. That is a valid result; you can still open any moment under “Other moments”.</p>
+    <p><strong>No postable moments in this video.</strong> No moments passed the selected relevance and standalone-quality checks. Nothing is forced onto the shortlist. That is a valid result; you can still open any moment under “Other moments”.</p>
     {% endif %}
   </div>
   {% endif %}
@@ -84,10 +90,27 @@
     · {{ job.duration|t }} long · {{ job.width or '?' }}×{{ job.height or '?' }} · {{ job.source_bytes|bytes }}
   </p>
   {% if job.flags %}<p class="flags">{% for f in job.flags %}<span class="badge warn">{{ f }}</span> {% endfor %}</p>{% endif %}
+  {% if job.stage != 'criteria' %}
+  <details class="criteria-summary">
+    <summary>Selection criteria · {{ profile.label }}</summary>
+    {% if job.status != 'running' and not short and not other %}
+      {% include "criteria_form.html" %}
+    {% else %}
+      <p>{{ profile.intent }}</p>
+      {% if profile.criteria %}<ul>{% for check in profile.criteria %}<li>{{ check }}</li>{% endfor %}</ul>{% endif %}
+      <p class="muted">{{ profile.min_s }}–{{ profile.max_s }} seconds · target {{ profile.target_s }} seconds. Import again to change the rubric after scoring.</p>
+    {% endif %}
+  </details>
+  {% endif %}
 </section>
 
 {% if job.stage in ('score', 'prepare', 'review') %}
 <section class="panel" aria-labelledby="short-h">
+  <div class="candidate-filters">
+    <label for="candidate-search">Search every moment<input id="candidate-search" data-candidate-search type="search" placeholder="Search spoken text or clip titles"></label>
+    <label for="candidate-status">Review state<select id="candidate-status" data-candidate-status><option value="all">All decisions</option><option value="pending">To review</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></label>
+    <span data-filter-count class="muted" role="status"></span>
+  </div>
   <div class="head-row">
     <h2 id="short-h">Suggested clips{% if short %} <span class="count num">{{ short|length }}</span>{% endif %}</h2>
     <p class="muted legend-line">Each frame is a real still from the clip. The line under it is why Jev picked it.</p>
@@ -113,7 +136,7 @@
   {% if short %}
   <ol class="sheet">
     {% for c in short %}{% set r = reviews.get(c.id) %}{% set st = r.status if r else 'pending' %}{% set x = explain(c, r.drafts if r else none) %}
-    <li class="shot r-{{ st }}">
+    <li class="shot r-{{ st }}" data-search="{{ (c.text ~ ' ' ~ (c.text_en or '') ~ ' ' ~ x.what)|lower }}" data-status="{{ st }}">
       <a class="gate shot-gate" href="/jobs/{{ job.id }}/clips/{{ c.id }}" aria-label="Open clip {{ c.rank }}">
         <img src="/jobs/{{ job.id }}/clips/{{ c.id }}/frame.jpg" alt="" loading="lazy" width="480" height="270">
         <span class="shot-rank num">{{ c.rank }}</span>
@@ -129,16 +152,16 @@
     </li>
     {% endfor %}
   </ol>
-  {% elif job.status != 'done' %}<p class="muted">Suggestions appear here once Jev has scored the class.</p>{% endif %}
+  {% elif job.status != 'done' %}<p class="muted">Suggestions appear here once Jev has scored the video.</p>{% endif %}
 
   {% if other %}
   <details class="others">
     <summary>Other moments ({{ other|length }}) <span class="muted">— not suggested; each says why. Open one if you know it is good.</span></summary>
     <table class="clips">
-      <thead><tr><th scope="col">Moment</th><th scope="col">Where in the class</th><th scope="col"><span class="sr">Open</span></th></tr></thead>
+      <thead><tr><th scope="col">Moment</th><th scope="col">Where in the video</th><th scope="col"><span class="sr">Open</span></th></tr></thead>
       <tbody>
       {% for c in other %}{% set x = explain(c) %}
-      <tr><td class="about-cell"><span class="what">“{{ x.opens }}”</span><span class="why">{{ left_out(c, short) }}{% if x.why %} · {{ x.why }}{% endif %}</span></td>
+      <tr data-search="{{ (c.text ~ ' ' ~ (c.text_en or ''))|lower }}" data-status="{{ (reviews.get(c.id) or {}).get('status', 'pending') }}"><td class="about-cell"><span class="what">“{{ x.opens }}”</span><span class="why">{{ left_out(c, short) }}{% if x.why %} · {{ x.why }}{% endif %}</span></td>
         <td class="mono nowrap">{{ c.start|t }} – {{ c.end|t }}</td>
         <td><a class="button small" href="/jobs/{{ job.id }}/clips/{{ c.id }}">Open</a></td></tr>
       {% endfor %}
@@ -151,8 +174,8 @@
 
 <section class="danger-zone">
   {% if job.status in ('done', 'failed', 'paused') and job.duration %}
-  <form method="post" action="/jobs/{{ job.id }}/redo" data-confirm="Find clips again from the recording? This transcribes the class again with the current model, translates it, and asks Jev again (you approve the cost first). Your reviews and previews for this class are removed."><button type="submit">Find clips again</button></form>
+  <form method="post" action="/jobs/{{ job.id }}/redo" data-confirm="Find clips again from the recording? This transcribes the video again with the current model, translates it, and asks Jev again (you approve the cost first). Your reviews and previews for this video are removed."><button type="submit">Find clips again</button></form>
   {% endif %}
-  <form method="post" action="/jobs/{{ job.id }}/delete" data-confirm="Delete this class, its local copy, previews, and exports? This cannot be undone."><button type="submit" class="danger">Delete this class</button></form>
+  <form method="post" action="/jobs/{{ job.id }}/delete" data-confirm="Delete this video, its local copy, previews, and exports? This cannot be undone."><button type="submit" class="danger">Delete this video</button></form>
 </section>
 {% endblock %}

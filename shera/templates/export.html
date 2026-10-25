@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% set refresh = task.state == 'running' %}
 {% block title %}Export · {{ job.title }}{% endblock %}
-{% block crumbs %}<a href="/">Classes</a><span aria-hidden="true">/</span><a href="/jobs/{{ job.id }}">{{ job.title }}</a><span aria-hidden="true">/</span><span>Export</span>{% endblock %}
+{% block crumbs %}<a href="/">Video library</a><span aria-hidden="true">/</span><a href="/jobs/{{ job.id }}">{{ job.title }}</a><span aria-hidden="true">/</span><span>Export</span>{% endblock %}
 {% block main %}
 <section class="panel" aria-labelledby="exp-h">
   <h1 id="exp-h">Export approved clips</h1>
@@ -12,7 +12,7 @@
   <p class="alert fail" role="alert">Export failed: {{ task.error }}. Your approvals and paid results are kept; fix the cause and export again.</p>
   {% else %}
   <div class="next">
-    <p>{% if approved %}<strong>{{ approved }} approved clip{{ '' if approved == 1 else 's' }}</strong> will be rendered in full quality, each as a portrait and a landscape video with captions, a thumbnail and posting text.{% else %}No clips are approved yet. Approve clips on the class page first.{% endif %}</p>
+    <p>{% if approved %}<strong>{{ approved }} approved clip{{ '' if approved == 1 else 's' }}</strong> will be rendered in full quality, each as a portrait and a landscape video with captions, a thumbnail and posting text.{% else %}No clips are approved yet. Approve clips on the video page first.{% endif %}</p>
     <div class="actions-row">
       <form method="post" action="/jobs/{{ job.id }}/export"><button type="submit" class="primary" {% if not approved %}disabled{% endif %}>{{ 'Export again' if packages else 'Export' }}</button></form>
       {% if packages and can_open %}<form method="post" action="/jobs/{{ job.id }}/export/open"><button type="submit"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg>Open the export folder</button></form>{% endif %}

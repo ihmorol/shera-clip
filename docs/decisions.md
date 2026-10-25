@@ -35,6 +35,13 @@
 
 ## Inputs pending, not permission to guess
 
+- **D28, 2026-10-01, owner in chat:** Generalize the application beyond IELTS.
+  Import videos, use built-in or user-defined clip-selection criteria, allow
+  AI-proposed criteria, and make all candidates easy to navigate. Host the
+  interface on Sites; downloading and media processing run locally on each
+  user's computer. IELTS remains a preset. See [Sites companion](sites-companion.md)
+  for the implemented workflow, supported inputs and current limitations.
+
 - A read-only Zoom Server-to-Server OAuth app in the account hosting the recordings will be set up when implementation needs it. Normal Zoom sign-in credentials must not be used as the application integration.
 - Three representative, consent-cleared classes and human labels are needed for quality proof. They are not in this repository. Keep actual media, VTT, labels containing personal information, and exports out of Git.
 - OpenRouter and paid transcription credentials are needed for authenticated tests. Never request secrets in an issue or chat transcript and never commit them.

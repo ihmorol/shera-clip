@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
   <symbol id="i-reel" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="6.8" r="1.9"/><circle cx="12" cy="17.2" r="1.9"/><circle cx="6.8" cy="12" r="1.9"/><circle cx="17.2" cy="12" r="1.9"/></g></symbol>
   <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 6.5a1.5 1.5 0 0 1 1.5-1.5h4.2l2 2.2H19a1.5 1.5 0 0 1 1.5 1.5v8.8A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
@@ -20,6 +21,7 @@
 </svg>
 <header class="top">
   <a class="brand" href="/"><svg class="i" aria-hidden="true"><use href="#i-reel"/></svg>Shera Clip</a>
+  <nav class="primary-nav" aria-label="Main navigation"><a href="/#jobs-h">Library</a><a href="/#import-h">Import video</a><a href="/zoom">Zoom</a></nav>
   <nav aria-label="Breadcrumb" class="crumbs">{% block crumbs %}{% endblock %}</nav>
 </header>
 <main id="main">

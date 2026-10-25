@@ -54,6 +54,7 @@ TRANSLATE_USD_PER_MIN = float(os.environ.get("SHERA_TRANSLATE_USD_PER_MIN", 0.00
 CLIP_MIN_S, CLIP_TARGET_S, CLIP_MAX_S = 60, 75, 90
 JEV_EST_USD = float(os.environ.get("SHERA_JEV_EST_USD", 0.002))
 DRAFT_EST_USD = float(os.environ.get("SHERA_DRAFT_EST_USD", 0.002))
+PROFILE_EST_USD = float(os.environ.get("SHERA_PROFILE_EST_USD", 0.002))
 DRAFT_MODEL = os.environ.get("SHERA_DRAFT_MODEL") or "openai/gpt-4o-mini"
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("SHERA_PORT") or 8765)

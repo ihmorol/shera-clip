@@ -4,7 +4,7 @@ import webbrowser
 
 import uvicorn
 
-from shera import config, pipeline
+from shera import config, pipeline, companion
 from shera.app import app
 
 
@@ -13,6 +13,7 @@ def main():
     url = f"http://{config.HOST}:{config.PORT}/"
     threading.Timer(1.0, webbrowser.open, (url,)).start()
     print(f"Shera Clip: {url}  (data: {config.DATA})")
+    print(f"Sites pairing code: {companion.TOKEN}")
     uvicorn.run(app, host=config.HOST, port=config.PORT, log_level="warning")
 
 

@@ -36,3 +36,9 @@ __pycache__/
 node_modules/
 dist/
 build/
+
+# Python packaging artifacts
+*.egg-info/
+
+# Scratch history backup of the folded site frontend
+*.bundle

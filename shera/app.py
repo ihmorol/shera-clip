@@ -9,20 +9,21 @@ from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from shera import candidates as cand
-from shera import config, db, ledger, media, pipeline, providers, zoom
+from shera import config, db, ledger, media, pipeline, providers, zoom, companion, profiles
 
 HERE = Path(__file__).parent
-STAGES = ("import", "transcript", "authorize", "transcribe", "translate", "candidates", "score", "prepare", "review")
+STAGES = ("import", "transcript", "authorize", "transcribe", "translate", "criteria", "candidates", "score", "prepare", "review")
 CATEGORIES = {"exam_tip": "Exam tip", "worked_example": "Worked example",
               "common_mistake": "Common mistake and correction", "vocabulary": "Vocabulary/phrase",
               "practice_exercise": "Practice exercise", "other": "Other"}
 STAGE_LABELS = {"import": "Copy recording", "transcript": "Check transcript", "authorize": "Approve cost",
+                "criteria": "Review criteria",
                 "transcribe": "Transcribe", "translate": "Translate", "candidates": "Find moments", "score": "Score moments",
                 "prepare": "Draft posts", "review": "Review clips"}
 STATUS_LABELS = {"running": "Working", "waiting": "Needs you", "paused": "Paused", "failed": "Failed",
@@ -63,6 +64,8 @@ def _allowed_hosts():
 
 @app.middleware("http")
 async def guard(request: Request, call_next):
+    if request.url.path == "/companion" or request.url.path.startswith("/companion/"):
+        return await companion.guard(request, call_next)
     if request.headers.get("host", "") not in _allowed_hosts():
         return PlainTextResponse("Forbidden host", status_code=403)
     if request.method not in ("GET", "HEAD"):
@@ -132,7 +135,8 @@ def fmt_bytes(n):
 
 templates.env.filters.update(t=fmt_time, bytes=fmt_bytes, usd=lambda v: f"${float(v or 0):.4f}")
 templates.env.globals.update(CATEGORIES=CATEGORIES, CAP=config.CAP_USD, STAGES=STAGES,
-                             STAGE_LABELS=STAGE_LABELS, STATUS_LABELS=STATUS_LABELS, zoom_time=zoom.local_time)
+                             STAGE_LABELS=STAGE_LABELS, STATUS_LABELS=STATUS_LABELS, zoom_time=zoom.local_time,
+                             PRESETS=profiles.PRESETS)
 
 
 # ---------- plain-words reasons, from the same rubric Jev scored against ----------
@@ -166,6 +170,18 @@ def explain(c, drafts=None):
            "opens_en": opens_en if opens_en and opens_en != opens else "", "why": "", "reasons": []}
     if c["score"] is None:
         return out
+    job = db.get_job(c["job_id"]) if c.get("job_id") else None
+    profile = profiles.resolve((job or {}).get("profile"), default="ielts")
+    if profile["preset"] != "ielts":
+        questions = providers._jev_questions(profile)
+        cat = c["category"] or "other"
+        out["why"] = " · ".join([cat.replace("_", " ").capitalize()] +
+                                [questions[q]["criteria"][_level(c[q])] for q in ("value", "clarity", "opening")])
+        out["reasons"] = [{"label": "Relevance" if q == "value" else LABELS[q],
+                           "score": f"{c[q]:.1f}/4", "text": questions[q]["criteria"][_level(c[q])]}
+                          for q in ("value", "clarity", "opening")]
+        out["category"] = profile["categories"].get(cat, cat)
+        return out
     cat = c["category"] or "other"
     speaker = [] if c.get("teacher") is None else ["teacher talking" if c["teacher"] >= 0.5 else "played recording"]
     out["why"] = " · ".join([CATEGORIES.get(cat, cat)] + speaker +
@@ -185,6 +201,15 @@ def left_out(c, short):
     """Why a scored candidate is not on the shortlist (mirrors candidates.shortlist)."""
     if c["score"] is None:
         return "Not scored"
+    job = db.get_job(c["job_id"]) if c.get("job_id") else None
+    profile = profiles.resolve((job or {}).get("profile"), default="ielts")
+    if profile["preset"] != "ielts":
+        reasons = {"low": "Below the selected quality thresholds", "recording": "Not the video's primary content",
+                   "offtopic": "Outside the selected goal", "private": "May contain private details",
+                   "unpostable": "Not strong enough as a standalone clip"}
+        blocked = cand.blocker(c, profile)
+        if blocked:
+            return "Left out: " + reasons[blocked]
     low = [SHORT[q][_level(c[q])] for q in ("value", "clarity") if (c[q] or 0) < 2]
     if low:
         return "Left out: " + " and ".join(low)
@@ -205,13 +230,18 @@ QUESTION_LABELS = {"value": "Teaching value", "clarity": "Stands alone", "openin
 def jev_answers(c):
     """Jev's full reply for a clip, question by question, for the reviewer to read."""
     raw = c.get("jev") or {}
+    job = db.get_job(c["job_id"]) if c.get("job_id") else None
+    profile = profiles.resolve((job or {}).get("profile"), default="ielts")
+    questions = providers._jev_questions(profile)
     rows = []
-    for q, spec in providers.JEV_QUESTIONS.items():
+    for q, spec in questions.items():
         a = raw.get(q)
         if not a:
             continue
         row = {"label": QUESTION_LABELS.get(q, q), "asked": spec["instructions"], "confidence": a.get("confidence"),
                "options": []}
+        if profile["preset"] != "ielts":
+            row["label"] = {"value": "Relevance", "teacher": "Primary content"}.get(q, row["label"])
         if spec["type"] == "score":
             row["answer"] = f"{float(a['score']):.2f} of {len(spec['criteria']) - 1}"
             legend = a.get("legend") or {str(i): t for i, t in enumerate(spec["criteria"])}
@@ -232,6 +262,10 @@ templates.env.globals.update(explain=explain, left_out=left_out, jev_answers=jev
 
 
 def page(request, name, status_code=200, **ctx):
+    if ctx.get("job"):
+        profile = pipeline.job_profile(ctx["job"]["id"])
+        ctx.update(profile=profile, CATEGORIES={k: CATEGORIES.get(k, k.replace("_", " ").capitalize())
+                                               for k in profile["categories"]})
     return templates.TemplateResponse(request, name, ctx, status_code=status_code)
 
 
@@ -251,7 +285,9 @@ def _home(request, error=None, form=None, status_code=200):
     setup = {"FFmpeg": bool(shutil.which("ffmpeg") and shutil.which("ffprobe")),
              "OpenRouter key": bool(config.openrouter_key())}
     return page(request, "home.html", status_code, setup=setup, inbox=inbox, inbox_dir=config.INBOX, jobs=jobs,
-                error=error, form=form or {})
+                error=error, form=form or {}, stats={"videos": len(jobs),
+                "ready": sum(j["status"] == "done" for j in jobs),
+                "attention": sum(j["status"] in ("waiting", "paused", "failed") for j in jobs)})
 
 
 @app.get("/")
@@ -327,7 +363,9 @@ def browse(path: str = "", ext: str = ".mp4"):
 
 
 @app.post("/import")
-def import_(request: Request, mp4: str = Form(""), vtt: str = Form(""), m4a: str = Form("")):
+def import_(request: Request, mp4: str = Form(""), vtt: str = Form(""), m4a: str = Form(""),
+            preset: str = Form("general"), intent: str = Form(""), min_s: int = Form(30),
+            target_s: int = Form(60), max_s: int = Form(90), suggest_criteria: bool = Form(False)):
     form = {"mp4": mp4, "vtt": vtt, "m4a": m4a}
     if not mp4.strip():
         return _home(request, "Enter the path to the class MP4.", form, 400)
@@ -341,7 +379,67 @@ def import_(request: Request, mp4: str = Form(""), vtt: str = Form(""), m4a: str
         m4a_path, err = _check_file(m4a, ".m4a", "Zoom audio")
     if err:
         return _home(request, err, form, 400)
-    job_id = pipeline.start_job(src, vtt_path, m4a_path)
+    try:
+        profile = _import_profile(preset, intent, min_s, target_s, max_s, suggest_criteria)
+    except ValueError as exc:
+        return _home(request, str(exc), form, 400)
+    job_id = pipeline.start_job(src, vtt_path, m4a_path, profile=profile)
+    return RedirectResponse(f"/jobs/{job_id}", 303)
+
+
+def _import_profile(preset, intent, min_s, target_s, max_s, suggest_criteria):
+    value = {"preset": preset, "min_s": min_s, "target_s": target_s, "max_s": max_s,
+             "suggest_criteria": suggest_criteria}
+    if intent.strip():
+        value["intent"] = intent.strip()
+    return profiles.resolve(value)
+
+
+@app.post("/import/upload")
+async def local_upload(request: Request, video: UploadFile = File(...), vtt_file: UploadFile | None = File(None),
+                       audio_file: UploadFile | None = File(None), preset: str = Form("general"),
+                       intent: str = Form(""), min_s: int = Form(30), target_s: int = Form(60),
+                       max_s: int = Form(90), suggest_criteria: bool = Form(False)):
+    form = {"preset": preset, "intent": intent, "min_s": min_s, "target_s": target_s, "max_s": max_s}
+    try:
+        profile = _import_profile(preset, intent, min_s, target_s, max_s, suggest_criteria)
+        result = await companion.import_video(video, vtt_file, audio_file, json.dumps(profile))
+    except (ValueError, HTTPException) as exc:
+        return _home(request, str(exc.detail if isinstance(exc, HTTPException) else exc) +
+                     " Select your files again before retrying.", form, 400)
+    return RedirectResponse(f"/jobs/{result['job_id']}", 303)
+
+
+@app.post("/import/url")
+def local_url(request: Request, url: str = Form(...), preset: str = Form("general"),
+              intent: str = Form(""), min_s: int = Form(30), target_s: int = Form(60),
+              max_s: int = Form(90), suggest_criteria: bool = Form(False)):
+    try:
+        profile = _import_profile(preset, intent, min_s, target_s, max_s, suggest_criteria)
+        result = companion.import_url({"url": url, "profile": profile})
+    except (ValueError, HTTPException) as exc:
+        return _home(request, str(exc.detail if isinstance(exc, HTTPException) else exc),
+                     {"url": url, "preset": preset, "intent": intent}, 400)
+    return RedirectResponse(f"/jobs/{result['job_id']}", 303)
+
+
+@app.post("/jobs/{job_id}/criteria")
+def local_criteria(request: Request, job_id: str, intent: str = Form(...), criteria: str = Form(""),
+                   min_s: int = Form(...), target_s: int = Form(...), max_s: int = Form(...)):
+    job = _job_or_404(job_id)
+    if job["status"] == "running" or db.candidates(job_id):
+        return _job_page(request, job_id, "Criteria cannot change after scoring starts. Import again to use a new rubric.", 409)
+    try:
+        profile = profiles.resolve({**pipeline.job_profile(job_id), "intent": intent,
+                                    "criteria": [line.strip() for line in criteria.splitlines() if line.strip()],
+                                    "min_s": min_s, "target_s": target_s, "max_s": max_s})
+    except ValueError as exc:
+        return _job_page(request, job_id, str(exc), 400)
+    if profile["criteria_proposed"]:
+        profile["criteria_confirmed"] = True
+    db.update_job(job_id, profile=profile)
+    if job["stage"] == "criteria":
+        pipeline.resume(job_id)
     return RedirectResponse(f"/jobs/{job_id}", 303)
 
 
@@ -569,6 +667,7 @@ def _clean(body, job, rv):
 
 
 @app.post("/jobs/{job_id}/clips/{cid}")
+@app.post("/companion/jobs/{job_id}/clips/{cid}")
 async def save_review(request: Request, job_id: str, cid: int):
     job, _ = _job_or_404(job_id), _clip_or_404(job_id, cid)
     rv = pipeline.ensure_review(cid)
@@ -576,7 +675,23 @@ async def save_review(request: Request, job_id: str, cid: int):
         body = await request.json()
     except ValueError:
         raise HTTPException(400, "Expected JSON")
-    _save(rv, _clean(body, job, rv))
+    if not isinstance(body, dict):
+        raise HTTPException(422, "Expected a review object")
+    if "captions" in body and (not isinstance(body["captions"], list) or not all(isinstance(c, dict) for c in body["captions"])):
+        raise HTTPException(422, "Captions must be an array of objects")
+    if "drafts" in body and (not isinstance(body["drafts"], dict) or
+                             not all(isinstance(v, dict) for v in body["drafts"].values())):
+        raise HTTPException(422, "Posting drafts must contain platform objects")
+    if body.get("category"):
+        from shera.profiles import resolve
+        categories = resolve(job.get("profile"), default="ielts")["categories"]
+        if body["category"] not in categories:
+            raise HTTPException(422, "Unknown category")
+        category = body.pop("category")
+        fields = {**_clean(body, job, rv), "category": category}
+    else:
+        fields = _clean(body, job, rv)
+    _save(rv, fields)
     rv = db.review(cid)
     return {**_state(rv), "captions": rv["captions"], "start": rv["start"], "end": rv["end"]}
 
@@ -589,6 +704,7 @@ def _save(rv, fields):
 
 
 @app.post("/jobs/{job_id}/clips/{cid}/captions/reset")
+@app.post("/companion/jobs/{job_id}/clips/{cid}/captions/reset")
 def reset_captions(job_id: str, cid: int):
     """Rebuild captions from the transcript for the current saved boundaries."""
     _job_or_404(job_id), _clip_or_404(job_id, cid)
@@ -614,6 +730,7 @@ def clip_frame(job_id: str, cid: int):
 
 
 @app.get("/jobs/{job_id}/clips/{cid}/state")
+@app.get("/companion/jobs/{job_id}/clips/{cid}/state")
 def clip_state(job_id: str, cid: int):
     _job_or_404(job_id), _clip_or_404(job_id, cid)
     rv = db.review(cid)
@@ -621,6 +738,7 @@ def clip_state(job_id: str, cid: int):
 
 
 @app.post("/jobs/{job_id}/clips/{cid}/preview")
+@app.post("/companion/jobs/{job_id}/clips/{cid}/preview")
 def preview(job_id: str, cid: int):
     _job_or_404(job_id), _clip_or_404(job_id, cid)
     _bg(f"render:{cid}", lambda: pipeline.render_preview(cid))
@@ -628,6 +746,7 @@ def preview(job_id: str, cid: int):
 
 
 @app.post("/jobs/{job_id}/clips/{cid}/draft")
+@app.post("/companion/jobs/{job_id}/clips/{cid}/draft")
 def redraft(job_id: str, cid: int):
     """Paid posting draft for this clip (the job's authorization and cap apply)."""
     job, _ = _job_or_404(job_id), _clip_or_404(job_id, cid)
@@ -638,6 +757,7 @@ def redraft(job_id: str, cid: int):
 
 
 @app.post("/jobs/{job_id}/clips/{cid}/decision")
+@app.post("/companion/jobs/{job_id}/clips/{cid}/decision")
 async def decide(request: Request, job_id: str, cid: int):
     _job_or_404(job_id), _clip_or_404(job_id, cid)
     decision = (await request.json()).get("decision")
@@ -716,3 +836,87 @@ def media_file(rel: str):
     if not path.is_relative_to(root) or not path.is_file():
         raise HTTPException(404, "Not found")
     return FileResponse(path)
+
+
+app.include_router(companion.router)
+
+
+@app.get("/companion/jobs/{job_id}/clips/{cid}")
+def companion_clip(job_id: str, cid: int):
+    _job_or_404(job_id)
+    c = _clip_or_404(job_id, cid)
+    rv = pipeline.ensure_review(cid)
+    return {"candidate": c, "review": rv, "state": _state(rv), "about": explain(c, rv["drafts"])}
+
+
+@app.post("/companion/jobs/{job_id}/authorize")
+def companion_authorize(job_id: str):
+    _job_or_404(job_id)
+    pipeline.authorize(job_id)
+    return {"ok": True}
+
+
+@app.post("/companion/jobs/{job_id}/resume")
+def companion_resume(job_id: str):
+    _job_or_404(job_id)
+    pipeline.resume(job_id)
+    return {"ok": True}
+
+
+@app.post("/companion/jobs/{job_id}/profile")
+async def companion_profile(request: Request, job_id: str):
+    from shera.profiles import resolve
+    job = _job_or_404(job_id)
+    if job["status"] == "running" or db.candidates(job_id):
+        raise HTTPException(409, "Set criteria before scoring starts; import again to use a new rubric.")
+    try:
+        profile = resolve(await request.json())
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if (job.get("profile") or {}).get("criteria_proposed"):
+        profile["criteria_confirmed"] = True
+    db.update_job(job_id, profile=profile)
+    return {"profile": profile}
+
+
+@app.post("/companion/jobs/{job_id}/suggest-profile")
+async def companion_suggest(request: Request, job_id: str):
+    from shera.profiles import resolve, fingerprint
+    job = _job_or_404(job_id)
+    body = await request.json()
+    if body.get("authorize") is not True:
+        raise HTTPException(422, "Authorize the provider call before requesting criteria.")
+    if job["status"] == "running" or db.candidates(job_id):
+        raise HTTPException(409, "Propose criteria before processing starts.")
+    profile = resolve({**(job.get("profile") or {}), "intent": body.get("intent") or resolve(job.get("profile"))["intent"]})
+    units = _units(job_id)
+    if not units:
+        raise HTTPException(409, "A transcript is needed first. Import a VTT with the video, or authorize transcription.")
+    db.update_job(job_id, authorized_usd=config.CAP_USD)
+    try:
+        sample = [units[i] for i in sorted({0, len(units) // 4, len(units) // 2, 3 * len(units) // 4, len(units) - 1})]
+        description = json.dumps({"goal": profile["intent"], "current_profile": profile,
+                                  "transcript_samples": sample}, ensure_ascii=False)
+        result = ledger.call(job_id, f"profile:{fingerprint(profile)}", "criteria", config.DRAFT_EST_USD,
+                             lambda: providers.suggest_profile(description))
+    except (ledger.ProviderError, ledger.BudgetStop, ledger.Indeterminate) as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {"profile": result}
+
+
+@app.post("/companion/jobs/{job_id}/export")
+def companion_export(job_id: str):
+    _job_or_404(job_id)
+    if not any(db.review(c["id"])["status"] == "approved" for c in db.candidates(job_id)):
+        raise HTTPException(409, "Approve at least one clip first.")
+    _bg(f"export:{job_id}", lambda: pipeline.export(job_id))
+    return {"ok": True}
+
+
+@app.get("/companion/jobs/{job_id}/exports")
+def companion_exports(job_id: str):
+    _job_or_404(job_id)
+    root = _export_root(job_id)
+    files = [{"name": p.relative_to(root).as_posix(), "url": "/companion" + _media_url(p)}
+             for p in root.rglob("*") if p.is_file()] if root.exists() else []
+    return {"files": files, "task": TASKS.get(f"export:{job_id}", {})}
