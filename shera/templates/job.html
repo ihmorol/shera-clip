@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% set refresh = job.status == 'running' or (job.status == 'done' and short_pending is defined and short_pending > short_ready) %}
+{% set refresh = job.status == 'running' or (autorender_running if autorender_running is defined else false) %}
 {% block title %}{{ job.title }} · Shera Clip{% endblock %}
 {% block crumbs %}<a href="/">Video library</a><span aria-hidden="true">/</span><span>{{ job.title }}</span>{% endblock %}
 {% block main %}

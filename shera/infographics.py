@@ -69,7 +69,9 @@ def normalize_plan(plan, n, lines):
         if scenes and u0 > prev + 1:  # a numbering slip: the previous slide holds through the gap
             scenes[-1]["u1"] = u0 - 1
         heading = _clean(s.get("heading"), 110)
-        bullets = [_clean(b, 140) for b in (s.get("bullets") or []) if _clean(b, 140)][:5]
+        raw_bullets = s.get("bullets")
+        bullets = [_clean(b, 140) for b in (raw_bullets if isinstance(raw_bullets, list) else [])
+                   if isinstance(b, str) and _clean(b, 140)][:5]
         if not heading:
             heading = _clean(lines[u0]["text"], 110)
         if not heading and not bullets and kind != "chatter":
@@ -86,9 +88,10 @@ def normalize_plan(plan, n, lines):
             "scenes": scenes}
 
 
-def plan_key(lines, title):
+def plan_key(lines, title, category="", intent=""):
     """Fingerprint of everything the paid plan call depends on; the ledger key carries it."""
-    raw = json.dumps({"t": title, "lines": [(u["text"], u["start"], u["end"]) for u in lines]},
+    raw = json.dumps({"t": title, "c": category, "i": intent,
+                      "lines": [(u["text"], u["start"], u["end"]) for u in lines]},
                      ensure_ascii=False)
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
@@ -96,17 +99,20 @@ def plan_key(lines, title):
 def scene_times(scenes, lines, duration):
     """Clip-relative [start, end) per scene: hard cuts with full coverage. A scene ends when its last
     line ends (short scenes are held for MIN_SCENE_S); the first starts at 0 and the last runs to the
-    audio's end, so the visuals always span exactly the audio."""
+    audio's end, so the visuals always span exactly the audio. A scene with no room left on the clock
+    merges into the previous slide rather than failing the render."""
     out, t = [], 0.0
     for k, sc in enumerate(scenes):
-        if k == len(scenes) - 1:
-            e = duration
-        else:
-            e = min(duration, max(t + MIN_SCENE_S, lines[sc["u1"]]["end"]))
+        e = duration if k == len(scenes) - 1 else min(duration, max(t + MIN_SCENE_S, lines[sc["u1"]]["end"]))
         if e <= t:
-            raise ValueError("scene timing collapsed; the clip is too short for its scenes")
+            if not out:
+                raise ValueError("scene timing collapsed; the clip is too short for its scenes")
+            out[-1]["u1"] = sc["u1"]  # the previous slide holds through these lines too
+            continue
         out.append({**sc, "start": round(t, 3), "end": round(e, 3), "dur": round(e - t, 3)})
         t = e
+    if not out:
+        raise ValueError("scene timing collapsed; the clip is too short for its scenes")
     return out
 
 
@@ -198,7 +204,7 @@ def build_video(pngs, times, captions, src, clip_start, dur, out, preset="medium
     fd, ass = tempfile.mkstemp(suffix=".ass", prefix="shera_", dir=out.parent)
     os.close(fd)
     ass = Path(ass)
-    ass.write_text(media.captions_ass(captions, dur, W, H, 60), encoding="utf-8")
+    ass.write_text(media.captions_ass(captions, dur, W, H, 180), encoding="utf-8")  # above the slide footer
     part = out.with_name(out.name + ".part")
     try:
         cmd = ffmpeg_command(pngs, times, captions, src, clip_start, dur,
@@ -244,9 +250,21 @@ def write_index(root):
 
 
 def finalize(tmp, final, report):
-    """Swap the finished clip folder in atomically; a failed QC still lands (marked failed) so the
-    evidence stays, but the UI never shows it as done."""
-    shutil.rmtree(final, ignore_errors=True)
+    """Swap the finished clip folder in; a failed QC still lands (marked failed) so the evidence stays,
+    but the UI never shows it as done. The previous folder is renamed aside first, so a player holding
+    one of its files open cannot destroy the old deliverable before the new one is in place."""
     (tmp / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.rename(final)
+    old = final.with_name(final.name + ".old")
+    shutil.rmtree(old, ignore_errors=True)
+    moved = False
+    if final.exists():
+        final.rename(old)
+        moved = True
+    try:
+        tmp.rename(final)
+    except OSError:
+        if moved and not final.exists():
+            old.rename(final)  # put the previous deliverable back
+        raise
+    shutil.rmtree(old, ignore_errors=True)
     write_index(final.parent)

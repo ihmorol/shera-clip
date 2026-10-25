@@ -15,6 +15,7 @@ from shera import config, db, infographics, ledger, media, profiles, providers, 
 
 _running = set()
 _lock = threading.Lock()
+_autorendering = set()  # job ids whose shortlist previews are being prepared right now
 
 
 def job_dir(job_id):
@@ -488,17 +489,24 @@ def render_preview(cid):
 
 def render_previews(job_id):
     """Best-effort rendering of every shortlisted clip's phone preview (D37): the operator should not
-    have to click Render ten times. Failures surface on each clip's own review page."""
-    failed = []
-    for c in sorted((x for x in db.candidates(job_id) if x["shortlisted"]), key=lambda x: x["rank"] or 0):
-        rv = ensure_review(c["id"])
-        if preview_current(rv):
-            continue
-        try:
-            render_preview(c["id"])
-        except Exception:
-            failed.append(c["id"])
-    return failed
+    have to click Render ten times. Failures surface on each clip's own review page. One run per job
+    at a time; `_autorendering` lets the job page show that previews are being prepared."""
+    with _lock:
+        if job_id in _autorendering:
+            return
+        _autorendering.add(job_id)
+    try:
+        for c in sorted((x for x in db.candidates(job_id) if x["shortlisted"]), key=lambda x: x["rank"] or 0):
+            rv = ensure_review(c["id"])
+            if preview_current(rv):
+                continue
+            try:
+                render_preview(c["id"])
+            except Exception:
+                continue  # the clip's own page shows the render error and the manual button
+    finally:
+        with _lock:
+            _autorendering.discard(job_id)
 
 
 def infographic(cid, preset="medium"):
@@ -520,7 +528,7 @@ def infographic(cid, preset="medium"):
                                          intent=profile["intent"])
         return infographics.normalize_plan(raw, len(lines), lines), cost
 
-    key = f"info:{cid}:{infographics.plan_key(lines, rv['title'])}"
+    key = f"info:{cid}:{infographics.plan_key(lines, rv['title'], rv['category'] or '', profile['intent'])}"
     try:
         planned = ledger.call(job_id, key, "infographic", config.INFO_EST_USD, plan)
     except ledger.ProviderError:  # the model ignored the contract once; one clean retry

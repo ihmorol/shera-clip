@@ -327,6 +327,8 @@ def scene_plan(lines, title="", category="", intent=""):
         for s in plan["scenes"]:
             if not isinstance(s, dict) or s.get("kind") not in SCENE_KINDS:
                 raise ValueError(f"bad scene: {s!r}"[:200])
+            if not isinstance(s.get("bullets", []), list) or not all(isinstance(b, str) for b in s.get("bullets", [])):
+                raise ValueError(f"bad bullets: {s!r}"[:200])
     except (KeyError, TypeError, ValueError) as e:
         raise ProviderError(f"scene plan: unexpected answer shape ({e!r})", billed=True, cost=cost) from e
     return plan, cost

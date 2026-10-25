@@ -84,9 +84,33 @@ def test_normalize_plan_clamps_long_text_and_fills_headline():
 
 def test_plan_key_tracks_boundaries_and_title():
     lines = infographics.clip_units(units(6), 0, 30)
-    assert infographics.plan_key(lines, "t") == infographics.plan_key(lines, "t")
+    assert infographics.plan_key(lines, "t") == infographics.plan_key(lines, "t", "", "")
     assert infographics.plan_key(lines, "t") != infographics.plan_key(lines, "other")
+    assert infographics.plan_key(lines, "t", "exam_tip") != infographics.plan_key(lines, "t", "vocabulary")
+    assert infographics.plan_key(lines, "t", intent="a") != infographics.plan_key(lines, "t", intent="b")
     assert infographics.plan_key(lines, "t") != infographics.plan_key(lines[:5], "t")
+
+
+def test_normalize_plan_drops_non_string_bullets():
+    p = plan(4, 4)
+    p["scenes"][0]["bullets"] = "one long line instead of a list"
+    got = infographics.normalize_plan(p, 4, units(4))
+    assert got["scenes"][0]["bullets"] == []
+
+
+def test_finalize_replaces_an_existing_folder_and_keeps_the_index_fresh(tmp_path):
+    final = tmp_path / "01-7"
+    final.mkdir()
+    (final / "report.json").write_text(json.dumps({"status": "failed", "problems": ["x"]}), encoding="utf-8")
+    tmp = final.with_name("01-7.part")
+    (tmp / "slides").mkdir(parents=True)
+    (tmp / "video.mp4").write_bytes(b"new")
+    infographics.finalize(tmp, final, {"status": "ok", "problems": []})
+    assert json.loads((final / "report.json").read_text(encoding="utf-8"))["status"] == "ok"
+    assert (final / "video.mp4").read_bytes() == b"new"
+    assert not final.with_name("01-7.old").exists()
+    index = json.loads((tmp_path / "index.json").read_text(encoding="utf-8"))
+    assert index == [{"status": "ok", "problems": []}]
 
 
 # ---------- timing ----------
@@ -107,6 +131,17 @@ def test_scene_times_hold_short_scenes_and_end_at_the_audio():
     times = infographics.scene_times(scenes, lines, 60.0)
     assert times[0]["dur"] >= infographics.MIN_SCENE_S
     assert times[-1]["end"] == 60.0  # trailing silence belongs to the last scene
+
+
+def test_scene_times_merge_a_scene_that_has_no_room_left():
+    lines = [{"i": 0, "start": 0.0, "end": 9.3, "text": "a", "en": ""},
+             {"i": 1, "start": 9.3, "end": 9.6, "text": "b", "en": ""},
+             {"i": 2, "start": 9.6, "end": 10.0, "text": "c", "en": ""}]
+    scenes = [{"u0": 0, "u1": 0, "kind": "point"}, {"u0": 1, "u1": 1, "kind": "point"},
+              {"u0": 2, "u1": 2, "kind": "point"}]
+    times = infographics.scene_times(scenes, lines, 10.0)  # used to raise here, forever
+    assert [(t["start"], t["end"]) for t in times] == [(0.0, 9.3), (9.3, 10.0)]
+    assert all(a["end"] == b["start"] for a, b in zip(times, times[1:]))  # speech is still covered
 
 
 # ---------- slide HTML ----------
@@ -316,20 +351,20 @@ def test_render_previews_ranks_through_the_shortlist(job_env, monkeypatch):
     jid, cid, _ = job_env
     done = []
 
-    def fake_preview(cid):
-        done.append(cid)
-
-    monkeypatch.setattr(pipeline, "render_preview", fake_preview)
+    monkeypatch.setattr(pipeline, "render_preview", lambda cid: done.append(cid))
     monkeypatch.setattr(pipeline, "preview_current", lambda rv: False)
-    assert pipeline.render_previews(jid) == []
+    pipeline.render_previews(jid)
     assert done == [cid]
     monkeypatch.setattr(pipeline, "preview_current", lambda rv: True)
-    assert pipeline.render_previews(jid) == [] and done == [cid]  # current previews are not re-rendered
-    done.clear()
+    pipeline.render_previews(jid)
+    assert done == [cid]  # current previews are not re-rendered
     monkeypatch.setattr(pipeline, "preview_current", lambda rv: False)
     monkeypatch.setattr(pipeline, "render_preview",
                         lambda cid: (_ for _ in ()).throw(RuntimeError("ffmpeg died")))
-    assert pipeline.render_previews(jid) == [cid]  # the failure is reported, the rest carry on
+    pipeline.render_previews(jid)  # the failure is contained and the run finishes cleanly
+    monkeypatch.setattr(pipeline, "render_preview", lambda cid: done.append(cid))
+    pipeline.render_previews(jid)
+    assert done == [cid, cid]  # a finished run released its slot, so a later run works
 
 
 # ---------- web ----------
@@ -401,6 +436,16 @@ def test_generate_all_reports_a_failed_clip_as_failed(client, monkeypatch):
     assert "Failed checks" in web.get(f"/jobs/{jid}/infographics").text
     state = web.get(f"/jobs/{jid}/infographics/state").json()
     assert state["clips"][str(cid)]["state"] == "done"  # the work finished; the file itself is marked failed
+
+
+def test_generate_all_refreshes_a_stale_error_state(client, monkeypatch):
+    web, (jid, cid, _) = client
+    app_module.TASKS[f"info:{cid}"] = {"state": "error", "error": "the browser is missing"}  # a stale failure
+    monkeypatch.setattr(pipeline, "infographic", _fake_render(jid))
+    web.post(f"/jobs/{jid}/infographics/generate")
+    _wait(f"infographics:{jid}")
+    html = web.get(f"/jobs/{jid}/infographics").text
+    assert "Ready" in html and "the browser is missing" not in html
 
 
 def test_generate_needs_an_approved_clip(client):

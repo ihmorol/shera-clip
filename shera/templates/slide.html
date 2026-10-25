@@ -134,7 +134,7 @@
     </div>
   {% elif scene.kind == "mistake" %}
     <div class="content">
-      {% if scene.heading and scene.bullets %}<h1 style="margin-top:0;font-size:64px">{{ scene.heading }}</h1>{% endif %}
+      {% if scene.heading %}<h1 style="margin-top:0;font-size:64px">{{ scene.heading }}</h1>{% endif %}
       <div class="duo">
         {% if scene.bullets %}
           <div class="row bad"><div class="tag">&#10007;</div><div class="body">{{ scene.bullets[0] }}</div></div>

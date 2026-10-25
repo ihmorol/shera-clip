@@ -505,6 +505,8 @@ def _job_page(request, job_id, error=None, status_code=200, notice=None):
                 stt_model=config.STT_MODEL,
                 translate_model=config.TRANSLATE_MODEL,
                 short_pending=len(pending), short_ready=ready,
+                autorender_running=(TASKS.get(f"autorender:{job_id}", {}).get("state") == "running"
+                                    or job_id in pipeline._autorendering),
                 stuck=[c for c in calls if c["state"] == "indeterminate" or (c["state"] == "sent" and not _live(c))],
                 inflight=[c for c in calls if c["state"] == "sent" and _live(c)],
                 approved=sum(r["status"] == "approved" for r in reviews.values()))
@@ -891,8 +893,12 @@ def _start_infographics(job_id):
         for c in sorted(db.candidates(job_id), key=lambda x: (x["rank"] is None, x["rank"] or 0, x["start"])):
             if c["id"] not in approved:
                 continue
-            if (_info_entry(job_id, c)["report"] or {}).get("status") == "ok":
-                continue  # already rendered; regenerating would only repeat identical work
+            if TASKS.get(f"info:{c['id']}", {}).get("state") == "running":
+                continue  # a per-clip render is already in flight; two runs would fight over the folder
+            entry = _info_entry(job_id, c)
+            if (entry["report"] or {}).get("status") == "ok":
+                TASKS[f"info:{c['id']}"] = {"state": "done", "error": None, "report": entry["report"]}
+                continue  # already rendered; refresh the task so a stale error cannot linger
             TASKS[f"info:{c['id']}"] = {"state": "running", "error": None}
             try:
                 report = pipeline.infographic(c["id"])
