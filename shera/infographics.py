@@ -103,6 +103,9 @@ def local_plan(lines, title=""):
     asks for the offline planner."""
     groups, cur = [], []
     for ln in lines:
+        if cur and ln["start"] - cur[-1]["end"] > 4.0:  # a pause starts a new slide
+            groups.append(cur)
+            cur = []
         cur.append(ln)
         if ln["end"] - cur[0]["start"] >= 15.0 or len(cur) >= 4:
             groups.append(cur)
@@ -162,7 +165,7 @@ def render_slides(htmls, out_dir):
         from playwright.sync_api import sync_playwright
     except ImportError as e:
         raise RuntimeError("Slide rendering needs Playwright: python -m pip install playwright") from e
-    out_dir = Path(out_dir)
+    out_dir = Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = []
     with sync_playwright() as pw:

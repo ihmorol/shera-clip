@@ -21,7 +21,8 @@ from shera import config, db, infographics, media, pipeline, transcript
 WINDOW_S = 80.0      # one clip's worth of class
 STEP_S = 30.0
 SKIP_EDGE_S = 120.0  # keep the class intro and ending out of the test windows
-PER_JOB = 2
+PER_JOB = 2          # videos kept per job
+AUDITION = 6         # windows tried, best speech first, until PER_JOB pass the transcript check
 
 _model = None
 
@@ -29,35 +30,42 @@ _model = None
 def whisper_model(size):
     global _model
     if _model is None:
+        import os
         from faster_whisper import WhisperModel
-        print(f"[whisper] loading {size} on CPU (int8); first run downloads the weights", flush=True)
-        _model = WhisperModel(size, device="cpu", compute_type="int8")
+        print(f"[whisper] loading {size} on CPU (int8, greedy); first run downloads the weights", flush=True)
+        _model = WhisperModel(size, device="cpu", compute_type="int8",
+                              cpu_threads=max(2, os.cpu_count() or 4))
     return _model
 
 
 def pick_windows(job_id):
-    """Speech-dense, mutually non-overlapping windows away from the class edges."""
+    """Speech-dense, mutually non-overlapping windows away from the class edges. Windows must hold at
+    least a minute of detected speech, so a recording whose audio track is dead (an OBS capture that
+    needs its Zoom M4A) is skipped instead of transcribed into nothing."""
     speech = pipeline._speech(job_id)
     dur = db.get_job(job_id)["duration"]
     scored = []
     t = SKIP_EDGE_S
     while t + WINDOW_S <= dur - SKIP_EDGE_S:
-        coverage = sum(min(e, t + WINDOW_S) - max(s, t) for s, e in speech)
-        scored.append((coverage, t))
+        coverage = sum(max(0.0, min(e, t + WINDOW_S) - max(s, t)) for s, e in speech)
+        if coverage >= 0.4 * WINDOW_S:  # real talk, not just background hiss
+            scored.append((coverage, t))
         t += STEP_S
     scored.sort(key=lambda x: -x[0])
     chosen = []
     for coverage, start in scored:
         if all(abs(start - u) >= WINDOW_S for _, u in chosen):
             chosen.append((coverage, start))
-        if len(chosen) == PER_JOB:
+        if len(chosen) == AUDITION:
             break
     return sorted(s for _, s in chosen)
 
 
 def transcribe_window(wav, offset):
-    segments, info = whisper_model("small" if len(sys.argv) < 2 else sys.argv[1]).transcribe(
-        str(wav), word_timestamps=True, vad_filter=True)
+    segments, info = whisper_model("base" if len(sys.argv) < 2 else sys.argv[1]).transcribe(
+        str(wav), word_timestamps=True, vad_filter=True, beam_size=1,
+        condition_on_previous_text=False,  # a noise loop must not feed on itself
+        no_speech_threshold=0.6)
     words = [{"start": offset + w.start, "end": offset + w.end, "word": w.word}
              for seg in segments for w in (seg.words or [])]
     print(f"[whisper] language={info.language} p={info.language_probability:.2f} words={len(words)}", flush=True)
@@ -66,9 +74,20 @@ def transcribe_window(wav, offset):
 
 def render_one(job_id, win_start, k):
     src = pipeline.media_path(job_id)
-    units = transcribe_window(src, win_start)  # absolute source-time lines
-    if len(units) < 3:
-        print(f"[skip] window {win_start:.0f}s: only {len(units)} lines", flush=True)
+    if media._envelope(src, win_start, WINDOW_S).max() < 100:  # ≈ under -50 dBFS: no voice here
+        print(f"[skip] window {win_start:.0f}s: the audio is silent", flush=True)
+        return None
+    wav = config.DATA / f"test-window-{job_id}-{int(win_start)}.wav"
+    media._run(["ffmpeg", "-y", "-v", "error", "-ss", f"{win_start:.3f}", "-t", f"{WINDOW_S:.3f}",
+                "-i", src, "-map", "0:a:0", "-ac", "1", "-ar", "16000", wav])
+    try:
+        units = transcribe_window(wav, win_start)  # window-relative times + offset = absolute
+    finally:
+        wav.unlink(missing_ok=True)
+    text = " ".join(u["text"] for u in units)
+    alpha = sum(1 for ch in text if "\u0980" <= ch <= "\u09FF" or (ch.isascii() and ch.isalpha()))
+    if len(units) < 3 or len(text.split()) < 40 or alpha < 100:
+        print(f"[skip] window {win_start:.0f}s: {len(text.split())} words is not real speech", flush=True)
         return None
     end = win_start + WINDOW_S
     lines = infographics.clip_units(units, win_start, end)
@@ -111,10 +130,21 @@ def main():
         src = pipeline.media_path(job["id"])
         if not src.exists():
             continue
-        windows = pick_windows(job["id"])
-        print(f"[job] {job['id']} {job['title']} -> windows {['%d' % w for w in windows]}", flush=True)
-        for k, win in enumerate(windows, 1):
-            render_one(job["id"], win, k)
+        cands = pick_windows(job["id"])
+        if not cands:
+            print(f"[job] {job['id']} {job['title']} -> no window with enough detected speech", flush=True)
+            continue
+        root = config.DATA / "exports" / job["id"] / "infographics-test"
+        shutil.rmtree(root, ignore_errors=True)  # a rerun replaces the last test set
+        print(f"[job] {job['id']} {job['title']} -> auditioning {['%ds' % w for w in cands]}", flush=True)
+        made = 0
+        for win in cands:
+            if made >= PER_JOB:
+                break
+            if render_one(job["id"], win, made + 1):
+                made += 1
+        if not made:
+            print(f"[job] {job['id']} -> no window produced a usable transcript", flush=True)
 
 
 if __name__ == "__main__":
