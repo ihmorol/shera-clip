@@ -56,5 +56,9 @@ JEV_EST_USD = float(os.environ.get("SHERA_JEV_EST_USD", 0.002))
 DRAFT_EST_USD = float(os.environ.get("SHERA_DRAFT_EST_USD", 0.002))
 PROFILE_EST_USD = float(os.environ.get("SHERA_PROFILE_EST_USD", 0.002))
 DRAFT_MODEL = os.environ.get("SHERA_DRAFT_MODEL") or "openai/gpt-4o-mini"
+# Infographic scene plans (D36): one small text call per approved clip. The translation model is reused
+# by default because it is cheap and reads Bangla well; slides and video render locally for free.
+INFOGRAPHIC_MODEL = os.environ.get("SHERA_INFOGRAPHIC_MODEL") or TRANSLATE_MODEL
+INFO_EST_USD = float(os.environ.get("SHERA_INFO_EST_USD", 0.002))
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("SHERA_PORT") or 8765)

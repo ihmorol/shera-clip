@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% set refresh = running %}
+{% block title %}Infographic videos · {{ job.title }} · Shera Clip{% endblock %}
+{% block crumbs %}<a href="/">Video library</a><span aria-hidden="true">/</span><a href="/jobs/{{ job.id }}">{{ job.title }}</a><span aria-hidden="true">/</span><span>Infographic videos</span>{% endblock %}
+{% block main %}
+<section class="panel">
+  <h1>Infographic videos</h1>
+  <p class="lede muted">Each approved clip becomes one 16:9 video for YouTube: the clip's own voice,
+  unchanged, for the clip's exact length, while the infographics show what is being said. Nothing is
+  added at the start or the end, and every file passes its media checks before it is marked ready.
+  Rendering runs on this computer.</p>
+  {% if error %}<p class="alert fail" role="alert">{{ error }}</p>{% endif %}
+  {% if notice %}<p class="alert ok" role="status">{{ notice }}</p>{% endif %}
+  <div class="actions-row">
+    <form method="post" action="/jobs/{{ job.id }}/infographics/generate">
+      <button type="submit" class="primary"
+              {% if running or not entries %}disabled{% endif %}
+              {% if not entries %}title="Approve at least one clip first"{% endif %}>
+        <svg class="i" aria-hidden="true"><use href="#i-film"/></svg>
+        {{ 'Rendering ' ~ entries|length ~ ' videos…' if running else 'Generate ' ~ entries|length ~ ' video' ~ ('' if entries|length == 1 else 's') }}
+      </button>
+    </form>
+    <a class="button" href="/jobs/{{ job.id }}/export">Clip packages</a>
+  </div>
+  {% if all_task.state == 'error' %}<p class="alert fail" role="alert">{{ all_task.error }}</p>{% endif %}
+  <p class="facts muted">Scene plans: <span class="mono">{{ info_model }}</span> · one small paid call per
+  clip under this class's cap · slides and video render locally</p>
+</section>
+
+{% if not entries %}
+<section class="panel">
+  <p class="muted">No approved clips yet. Approve clips on the
+  <a href="/jobs/{{ job.id }}">video's page</a> first — each approved clip becomes exactly one video.</p>
+</section>
+{% endif %}
+
+{% if entries %}
+<section class="panel">
+  <ol class="info-list">
+    {% for e in entries %}
+    {% set tst = e.task.state if e.task else '' %}
+    {% set rst = e.report.status if e.report else '' %}
+    {% set st = 'running' if tst == 'running' else ('error' if tst == 'error' else ('ok' if rst == 'ok' else ('failed' if e.report else 'idle'))) %}
+    <li class="info-item s-{{ st }}">
+      <div class="info-head">
+        <span class="info-rank num">{{ e.c.rank if e.c.rank else '·' }}</span>
+        <h2>{{ e.rv.title or (e.report.headline if e.report else '') or 'Clip ' ~ e.c.id }}</h2>
+        <span class="num mono muted">{{ '%.0f'|format(e.rv.end - e.rv.start) }} s</span>
+        {% if st == 'running' %}<span class="badge run">Rendering…</span>
+        {% elif st == 'error' %}<span class="badge fail">Failed</span>
+        {% elif st == 'ok' %}<span class="badge r-approved">Ready</span>
+        {% elif st == 'failed' %}<span class="badge r-rejected">Failed checks</span>
+        {% else %}<span class="badge">Not generated</span>{% endif %}
+      </div>
+
+      {% if st == 'error' %}
+      <p class="alert fail" role="alert">{{ e.task.error }}</p>
+      {% elif st == 'failed' %}
+      <p class="alert fail" role="alert">The file rendered but failed its checks:
+        {% for p in e.report.problems %}<span class="mono">{{ p }}</span>{% if not loop.last %}; {% endif %}{% endfor %}.
+        It is not ready to publish.</p>
+      {% elif st == 'ok' %}
+      <div class="info-body">
+        <video class="info-player" controls preload="none" poster="{{ e.poster_url }}" src="{{ e.video_url }}"></video>
+        <dl class="readouts info-facts">
+          <div><dt>Scenes</dt><dd class="num">{{ e.report.scenes }}</dd></div>
+          <div><dt>Length</dt><dd class="num">{{ '%.1f'|format(e.report.duration) }} s</dd></div>
+          <div><dt>Audio peak</dt><dd class="num">{{ e.report.audio_peak }}</dd></div>
+          <div><dt>Plan cost</dt><dd class="num">{{ e.report.cost_usd|usd }}</dd></div>
+        </dl>
+      </div>
+      <p class="muted">“{{ e.report.headline }}” · {{ e.report.scenes }} scenes · checks passed
+        (H.264/AAC, 1920×1080, length matches the audio)</p>
+      {% endif %}
+
+      <div class="actions-row">
+        <form method="post" action="/jobs/{{ job.id }}/clips/{{ e.c.id }}/infographic">
+          <button type="submit" class="small" {% if st == 'running' %}disabled{% endif %}>
+            {{ 'Render again' if e.report else 'Render this video' }}</button>
+        </form>
+        <a class="button small" href="/jobs/{{ job.id }}/clips/{{ e.c.id }}">Open the clip</a>
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% endif %}
+{% endblock %}

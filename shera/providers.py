@@ -119,6 +119,21 @@ PROFILE_SYSTEM = (
     "Return JSON only with preset, intent, criteria (up to 8 short checks), min_s, target_s, and max_s. "
     "Durations must be whole seconds with 5 <= min_s <= target_s <= max_s <= 600."
 )
+SCENE_KINDS = ("point", "list", "steps", "example", "mistake", "definition", "quote", "comparison", "chatter")
+SCENE_PLAN_SYSTEM = (
+    "You design the on-screen infographics for a short video that plays a clip's own audio unchanged. "
+    "You get the clip's transcript lines, numbered from 0, and split them into 3 to 12 scenes. "
+    "Rules: scenes are contiguous and together cover every line exactly once (scene k must start at the "
+    "line after scene k-1 ends); write on-screen text in the language the lines are spoken in (Bangla "
+    "stays Bangla, English stays English, mixed stays mixed); compress what is said into a short heading "
+    "and at most 5 short bullets; 'emphasis' is one key phrase or number said in the scene; 'note' is a "
+    "short English gloss when the lines are Bangla. Never invent facts, numbers, names, results, or "
+    "claims that are not in the lines; never add brand names, handles, hashtags, or URLs. A greeting, "
+    "farewell, or class-logistics line becomes kind 'chatter' with its words as the heading. "
+    "Reply with JSON only: {\"headline\": \"short title for the whole video\", \"scenes\": [{"
+    '"u0": 0, "u1": 2, "kind": "point", "heading": "...", "bullets": ["..."], "emphasis": "...", '
+    '"note": "..."}]} where kind is one of ' + ", ".join(SCENE_KINDS) + "."
+)
 
 
 def _key(name, value):
@@ -289,3 +304,29 @@ def suggest_profile(description):
     except (KeyError, TypeError, IndexError, ValueError, json.JSONDecodeError) as e:
         raise ProviderError(f"profile: unexpected answer shape ({e!r})", billed=True, cost=cost) from e
     return out, cost
+
+
+def scene_plan(lines, title="", category="", intent=""):
+    """One infographic scene plan for a clip (D36): contiguous scenes covering every numbered line.
+    Coverage against the real line count is enforced by infographics.normalize_plan."""
+    data, cost = _openrouter(CHAT_URL, {
+        "model": config.INFOGRAPHIC_MODEL,
+        "response_format": {"type": "json_object"},
+        "usage": {"include": True},
+        "messages": [{"role": "system", "content": SCENE_PLAN_SYSTEM},
+                     {"role": "user", "content": json.dumps(
+                         {"title": title, "category": category, "goal": intent, "lines": lines},
+                         ensure_ascii=False)}],
+    })
+    try:
+        plan = json.loads(data["choices"][0]["message"]["content"])
+        if not isinstance(plan, dict) or not isinstance(plan.get("headline"), str):
+            raise ValueError("missing headline")
+        if not isinstance(plan.get("scenes"), list) or not plan["scenes"]:
+            raise ValueError("no scenes")
+        for s in plan["scenes"]:
+            if not isinstance(s, dict) or s.get("kind") not in SCENE_KINDS:
+                raise ValueError(f"bad scene: {s!r}"[:200])
+    except (KeyError, TypeError, ValueError) as e:
+        raise ProviderError(f"scene plan: unexpected answer shape ({e!r})", billed=True, cost=cost) from e
+    return plan, cost

@@ -36,6 +36,7 @@ def env(tmp_path, monkeypatch):
         return "sha-fake", d.stat().st_size
 
     monkeypatch.setattr(pipeline, "_spawn", pipeline.run)  # run synchronously
+    monkeypatch.setattr(pipeline, "render_previews", lambda jid: [])  # auto-previews are tested separately
     monkeypatch.setattr(media, "copy_with_hash", copy)
     monkeypatch.setattr(media, "probe", lambda p: {"duration": DUR, "width": 1920, "height": 1080, "vcodec": "h264",
                                                    "acodec": "aac", "v_start": 0, "a_start": 0, "has_audio": True})

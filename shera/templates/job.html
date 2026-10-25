@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% set refresh = job.status == 'running' %}
+{% set refresh = job.status == 'running' or (job.status == 'done' and short_pending is defined and short_pending > short_ready) %}
 {% block title %}{{ job.title }} · Shera Clip{% endblock %}
 {% block crumbs %}<a href="/">Video library</a><span aria-hidden="true">/</span><span>{{ job.title }}</span>{% endblock %}
 {% block main %}
@@ -22,6 +22,7 @@
   </ol>
 
   {% if error %}<p class="alert fail" role="alert">{{ error }}</p>{% endif %}
+  {% if notice %}<p class="alert ok" role="status">{{ notice }}</p>{% endif %}
 
   {% if job.status == 'running' %}
   <div class="next" role="status">
@@ -73,11 +74,17 @@
   {% elif job.status == 'done' %}
   <div class="next">
     {% if short %}
-    <p><strong>Next:</strong> review the {{ short|length }} suggested clip{{ '' if short|length == 1 else 's' }} below. Open one, watch it, fix anything, render the previews, then approve or reject.{% if approved %} When you are done, export the approved clips.{% endif %}</p>
+    <p><strong>Next:</strong> review the {{ short|length }} suggested clip{{ '' if short|length == 1 else 's' }} below. Their phone previews were already prepared for you — open one, watch it, fix anything, then approve or reject it.</p>
     <div class="actions-row">
       {% set todo = [] %}{% for c in short if (reviews.get(c.id) or {}).get('status', 'pending') == 'pending' %}{% set _ = todo.append(c) %}{% endfor %}
       {% if todo %}<a class="button primary" href="/jobs/{{ job.id }}/clips/{{ todo[0].id }}"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>{{ 'Start reviewing' if todo|length == short|length else 'Review the next clip' }}</a>{% endif %}
+      {% if short_pending %}
+      <form method="post" action="/jobs/{{ job.id }}/approve-selected" data-confirm="Approve all selected clips whose previews are ready? You can still edit or reject each one afterwards.">
+        <button type="submit" class="ok" {% if short_ready == 0 %}disabled title="The previews are still rendering"{% endif %}>Approve the {{ short_ready }} ready clip{{ '' if short_ready == 1 else 's' }}</button>
+      </form>
+      {% endif %}
       <form method="get" action="/jobs/{{ job.id }}/export"><button type="submit" {% if approved and not todo %}class="primary"{% endif %} {% if not approved %}disabled title="Approve at least one clip first"{% endif %}>Export {{ approved }} approved</button></form>
+      {% if approved %}<a class="button" href="/jobs/{{ job.id }}/infographics"><svg class="i" aria-hidden="true"><use href="#i-film"/></svg>Infographic videos</a>{% endif %}
     </div>
     {% else %}
     <p><strong>No postable moments in this video.</strong> No moments passed the selected relevance and standalone-quality checks. Nothing is forced onto the shortlist. That is a valid result; you can still open any moment under “Other moments”.</p>

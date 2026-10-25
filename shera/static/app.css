@@ -898,3 +898,34 @@ input[type=file]::file-selector-button { font: inherit; margin-right: .75rem; pa
 
 
 .primary-nav a[aria-current=page] { color: var(--mask-hi); text-decoration: underline; text-underline-offset: .5rem; }
+
+/* ---------- infographic videos (D35–D38) ---------- */
+
+.alert.ok { background: var(--leader-wash); border-color: rgba(127, 220, 156, .4); color: #c9f0da; }
+
+.info-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.info-item { padding: 1.1rem 0; border-top: 1px solid var(--line); }
+.info-item:first-child { border-top: 0; padding-top: .25rem; }
+.info-item.s-running .info-head h2 { color: var(--run); }
+
+.info-head { display: flex; align-items: baseline; gap: .7rem; flex-wrap: wrap; }
+.info-head h2 { font-size: 1.15rem; font-weight: 650; margin: 0; }
+.info-head .badge { align-self: center; }
+.info-rank {
+  flex: none; width: 1.9rem; height: 1.9rem; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--mask); color: var(--mask-ink); font-weight: 700; font-size: .95rem;
+}
+.info-item.s-idle .info-rank { background: var(--raised); color: var(--ink-2); border: 1px solid var(--line); }
+.info-item.s-failed .info-rank, .info-item.s-error .info-rank { background: var(--safety-wash); color: var(--safety); }
+
+.info-body { display: flex; gap: 1.25rem; margin: .8rem 0; align-items: flex-start; flex-wrap: wrap; }
+.info-player {
+  width: min(100%, 34rem); aspect-ratio: 16 / 9; height: auto;
+  background: #000; border-radius: var(--r-frame, 8px); border: 1px solid var(--line);
+}
+.info-facts { margin: 0; }
+
+@media (max-width: 640px) {
+  .info-body { flex-direction: column; }
+}

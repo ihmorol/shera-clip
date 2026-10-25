@@ -11,7 +11,7 @@ import uuid
 from pathlib import Path
 
 from shera import candidates as cand
-from shera import config, db, ledger, media, profiles, providers, transcript, zoom
+from shera import config, db, infographics, ledger, media, profiles, providers, transcript, zoom
 
 _running = set()
 _lock = threading.Lock()
@@ -98,6 +98,8 @@ def run(job_id):
             if stage(job_id) is False:
                 return  # waiting for the operator
         db.update_job(job_id, stage="review", status="done", progress=1.0)
+        with contextlib.suppress(Exception):
+            render_previews(job_id)  # D37: best-effort; a preview failure is visible on the clip's page
     except (ledger.BudgetStop, ledger.Indeterminate) as e:
         db.update_job(job_id, status="paused", error=str(e))
     except Exception as e:
@@ -482,6 +484,78 @@ def render_preview(cid):
             with contextlib.suppress(OSError):  # a browser may still hold the old file open
                 old.unlink()
     return out
+
+
+def render_previews(job_id):
+    """Best-effort rendering of every shortlisted clip's phone preview (D37): the operator should not
+    have to click Render ten times. Failures surface on each clip's own review page."""
+    failed = []
+    for c in sorted((x for x in db.candidates(job_id) if x["shortlisted"]), key=lambda x: x["rank"] or 0):
+        rv = ensure_review(c["id"])
+        if preview_current(rv):
+            continue
+        try:
+            render_preview(c["id"])
+        except Exception:
+            failed.append(c["id"])
+    return failed
+
+
+def infographic(cid, preset="medium"):
+    """One approved clip -> one infographic video (D35–D38). Returns the clip's report; an empty
+    `problems` list is the only path to status "ok". The scene plan is the only paid step (journaled,
+    capped, replayed on resume); slides and assembly render locally."""
+    c, rv = db.candidate(cid), db.review(cid)
+    if rv["status"] != "approved":
+        raise ValueError("Only approved clips get infographic videos.")
+    job_id = c["job_id"]
+    lines = infographics.clip_units(_units(job_id), rv["start"], rv["end"])
+    if not lines:
+        raise ValueError("The clip's transcript lines are empty; adjust the boundaries and approve again.")
+    dur = rv["end"] - rv["start"]
+    profile = job_profile(job_id)
+
+    def plan():
+        raw, cost = providers.scene_plan(lines, title=rv["title"] or "", category=rv["category"] or "",
+                                         intent=profile["intent"])
+        return infographics.normalize_plan(raw, len(lines), lines), cost
+
+    key = f"info:{cid}:{infographics.plan_key(lines, rv['title'])}"
+    try:
+        planned = ledger.call(job_id, key, "infographic", config.INFO_EST_USD, plan)
+    except ledger.ProviderError:  # the model ignored the contract once; one clean retry
+        planned = ledger.call(job_id, key, "infographic", config.INFO_EST_USD, plan)
+    times = infographics.scene_times(planned["scenes"], lines, dur)
+
+    root = config.DATA / "exports" / job_id / "infographics"
+    final = root / f"{c['rank'] or 0:02d}-{cid}"
+    tmp = final.with_name(final.name + ".part")
+    shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        (tmp / "slides").mkdir(parents=True)
+        htmls = [infographics.slide_html(sc, k, len(times), headline=planned["headline"],
+                                         title=rv["title"] or "", category=rv["category"] or "")
+                 for k, sc in enumerate(times, 1)]
+        pngs = infographics.render_slides(htmls, tmp / "slides")
+        video = tmp / "video.mp4"
+        infographics.build_video(pngs, times, rv["captions"] or [], media_path(job_id),
+                                 rv["start"], dur, video, preset=preset)
+        problems, extra = infographics.qc(video, dur)
+        media.thumbnail(video, tmp / "poster.jpg", 0.2)
+        call = db.one("SELECT cost_usd FROM paid_calls WHERE job_id=? AND key=? AND state='done'",
+                      job_id, key)
+        report = {"folder": final.name, "candidate_id": cid, "rank": c["rank"], "title": rv["title"] or "",
+                  "headline": planned["headline"], "category": rv["category"] or "",
+                  "duration": round(dur, 3), "scenes": len(times), "model": config.INFOGRAPHIC_MODEL,
+                  "cost_usd": call["cost_usd"] if call else None, **extra,
+                  "status": "ok" if not problems else "failed", "problems": problems}
+        (tmp / "plan.json").write_text(
+            json.dumps({"headline": planned["headline"], "scenes": times}, ensure_ascii=False, indent=2),
+            encoding="utf-8")
+        infographics.finalize(tmp, final, report)
+        return report
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)  # a no-op once finalize renamed the folder
 
 
 def _srt_time(t):

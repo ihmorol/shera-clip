@@ -338,6 +338,17 @@ def thumbnail(video, out_jpg, at_s, width=None):
     return Path(out_jpg)
 
 
+def audio_peak(path, seconds=120.0):
+    """Peak of the 10 ms loudness envelope over the first `seconds`, to catch a silent mux (A8)."""
+    env = _envelope(path, 0.0, seconds)
+    return float(env.max()) if len(env) else 0.0
+
+
+def captions_ass(captions, duration, w, h, margin_v):
+    """Spoken-line captions (no title) burned over a rendered video; same font path as render()."""
+    return _ass("", captions, 0, margin_v, duration, w, h)
+
+
 def verify(path, expected_duration, size=(W, H)):
     """-> list of problems; empty means OK."""
     try:

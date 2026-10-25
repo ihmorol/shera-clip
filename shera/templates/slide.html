@@ -1,0 +1,192 @@
+<!doctype html>
+{# One 1920x1080 infographic slide, screenshot by headless Chromium (D36).
+   Palette and type come from DESIGN.md; Nirmala UI carries the Bangla shaping. #}
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<style>
+  :root{
+    --ground:#0a1d20; --panel:#0f282c; --raised:#153439; --well:#081619;
+    --line:#234950; --ink:#f3e8d9; --ink2:#a8c4c1; --ink3:#7fa19e;
+    --mask:#ff8a3d; --mask-ink:#221004; --leader:#7fdc9c; --safety:#ff7466;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1920px;height:1080px;overflow:hidden}
+  body{
+    font-family:"Segoe UI Variable Text","Segoe UI",system-ui,"Nirmala UI","Noto Sans Bengali",sans-serif;
+    background:
+      radial-gradient(1400px 900px at 82% -10%, rgba(255,138,61,.07), transparent 60%),
+      radial-gradient(1200px 800px at -10% 110%, rgba(122,214,220,.05), transparent 55%),
+      var(--ground);
+    color:var(--ink);
+    display:flex;flex-direction:column;
+    padding:96px 120px 64px;
+  }
+  .mono{font-family:"Cascadia Mono","Cascadia Code",Consolas,ui-monospace,monospace;font-variant-numeric:tabular-nums}
+
+  /* top strip: category kicker left, video headline right */
+  .top{display:flex;justify-content:space-between;align-items:baseline;gap:48px}
+  .kicker{
+    color:var(--mask);font-size:26px;font-weight:600;letter-spacing:.14em;
+    text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;
+  }
+  .brand{color:var(--ink3);font-size:24px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:36%}
+
+  h1{
+    font-size:76px;font-weight:650;line-height:1.28;letter-spacing:-.01em;
+    margin-top:36px;max-width:1500px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
+  .content{flex:1;display:flex;flex-direction:column;justify-content:center;gap:36px;min-height:0;margin-top:24px}
+
+  .bullets{display:flex;flex-direction:column;gap:26px;max-width:1500px}
+  .bullets li{
+    list-style:none;display:flex;gap:26px;align-items:flex-start;
+    font-size:44px;line-height:1.5;color:var(--ink2);
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
+  .bullets li .mark{
+    flex:none;width:52px;height:52px;margin-top:8px;border-radius:999px;
+    background:var(--raised);border:2px solid var(--line);
+    display:flex;align-items:center;justify-content:center;
+    font-size:28px;font-weight:700;color:var(--mask);
+  }
+  .bullets li b, .bullets li strong{color:var(--ink);font-weight:650}
+
+  .emphasis{
+    align-self:flex-start;max-width:1500px;
+    border-left:10px solid var(--mask);background:var(--raised);
+    border-radius:0 14px 14px 0;padding:26px 44px;
+    font-size:56px;font-weight:650;line-height:1.35;color:var(--ink);
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
+  .note{color:var(--ink3);font-size:30px;line-height:1.45;max-width:1500px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+  /* card layouts: example / definition */
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-left:10px solid var(--mask);
+    border-radius:14px;padding:40px 56px;max-width:1500px;
+    font-size:46px;line-height:1.55;color:var(--ink2);
+    display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;
+  }
+  .card b{color:var(--ink)}
+
+  /* quote */
+  .quote{max-width:1500px}
+  .quote .mark{font-size:150px;line-height:.6;color:var(--mask);height:70px}
+  .quote p{font-size:62px;font-weight:650;line-height:1.45;color:var(--ink);
+    display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+
+  /* mistake: wrong then right */
+  .duo{display:flex;flex-direction:column;gap:30px;max-width:1500px}
+  .duo .row{display:flex;gap:30px;align-items:stretch}
+  .duo .tag{
+    flex:none;width:88px;border-radius:14px;display:flex;align-items:center;justify-content:center;
+    font-size:46px;font-weight:700;
+  }
+  .duo .bad .tag{background:rgba(255,116,102,.14);color:var(--safety);border:2px solid rgba(255,116,102,.5)}
+  .duo .good .tag{background:rgba(127,220,156,.14);color:var(--leader);border:2px solid rgba(127,220,156,.5)}
+  .duo .body{
+    flex:1;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:30px 44px;
+    font-size:42px;line-height:1.5;color:var(--ink2);
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+  }
+  .duo .bad .body{border-color:rgba(255,116,102,.35)}
+  .duo .good .body{border-color:rgba(127,220,156,.35)}
+  .duo .good .body{color:var(--ink)}
+
+  /* comparison columns */
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:40px;max-width:1500px}
+  .cols .col{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:36px 44px;
+    font-size:40px;line-height:1.55;color:var(--ink2)}
+  .cols .col .head{color:var(--mask);font-size:30px;font-weight:600;letter-spacing:.1em;
+    text-transform:uppercase;margin-bottom:20px}
+
+  /* chatter: the spoken words, quiet */
+  .speech{font-size:52px;line-height:1.6;color:var(--ink2);max-width:1500px;
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+
+  /* footer: progress + counters */
+  .bottom{margin-top:48px}
+  .track{height:8px;border-radius:999px;background:var(--well);overflow:hidden}
+  .fill{height:100%;background:var(--mask);border-radius:999px}
+  .under{display:flex;justify-content:space-between;margin-top:18px;color:var(--ink3);font-size:24px}
+  .under .title{max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
+</head>
+<body>
+  <div class="top">
+    <div class="kicker">{{ category or "" }}</div>
+    <div class="brand">{{ headline or "" }}</div>
+  </div>
+
+  {% if scene.kind == "chatter" %}
+    <div class="content">
+      <div class="speech">{{ scene.heading }}</div>
+      {% if scene.note %}<div class="note">{{ scene.note }}</div>{% endif %}
+    </div>
+  {% elif scene.kind == "quote" %}
+    <div class="content quote">
+      <div class="mark">&ldquo;</div>
+      <p>{{ scene.heading }}</p>
+      {% if scene.note %}<div class="note">{{ scene.note }}</div>{% endif %}
+    </div>
+  {% elif scene.kind == "mistake" %}
+    <div class="content">
+      {% if scene.heading and scene.bullets %}<h1 style="margin-top:0;font-size:64px">{{ scene.heading }}</h1>{% endif %}
+      <div class="duo">
+        {% if scene.bullets %}
+          <div class="row bad"><div class="tag">&#10007;</div><div class="body">{{ scene.bullets[0] }}</div></div>
+        {% endif %}
+        {% if scene.bullets|length > 1 %}
+          <div class="row good"><div class="tag">&#10003;</div><div class="body">{{ scene.bullets[1] }}</div></div>
+        {% endif %}
+      </div>
+      {% if scene.note %}<div class="note">{{ scene.note }}</div>{% endif %}
+    </div>
+  {% elif scene.kind == "comparison" %}
+    <div class="content">
+      <h1 style="margin-top:0">{{ scene.heading }}</h1>
+      <div class="cols">
+        {% set half = ((scene.bullets|length + 1) / 2)|round(0, 'ceil')|int %}
+        <div class="col"><div class="head">A</div>
+          {% for b in scene.bullets[:half] %}<div style="margin-bottom:14px">{{ b }}</div>{% endfor %}</div>
+        <div class="col"><div class="head">B</div>
+          {% for b in scene.bullets[half:] %}<div style="margin-bottom:14px">{{ b }}</div>{% endfor %}</div>
+      </div>
+      {% if scene.note %}<div class="note">{{ scene.note }}</div>{% endif %}
+    </div>
+  {% elif scene.kind in ("example", "definition") %}
+    <div class="content">
+      <h1 style="margin-top:0">{{ scene.heading }}</h1>
+      {% if scene.emphasis %}<div class="emphasis">{{ scene.emphasis }}</div>{% endif %}
+      {% if scene.bullets %}
+        <div class="card">{% for b in scene.bullets %}<div>{{ b }}</div>{% endfor %}</div>
+      {% endif %}
+      {% if scene.note %}<div class="note">{{ scene.note }}</div>{% endif %}
+    </div>
+  {% else %}
+    <div class="content">
+      <h1 style="margin-top:0">{{ scene.heading }}</h1>
+      {% if scene.emphasis %}<div class="emphasis">{{ scene.emphasis }}</div>{% endif %}
+      {% if scene.bullets %}
+        <ul class="bullets">
+          {% for b in scene.bullets %}
+            <li><span class="mark mono">{{ loop.index if scene.kind in ("steps", "list") else "•" }}</span><span>{{ b }}</span></li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      {% if scene.note %}<div class="note">{{ scene.note }}</div>{% endif %}
+    </div>
+  {% endif %}
+
+  <div class="bottom">
+    <div class="track"><div class="fill" style="width:{{ (100 * k / n)|round(2) }}%"></div></div>
+    <div class="under">
+      <span class="title">{{ title or "" }}</span>
+      <span class="mono">{{ "%d / %d"|format(k, n) }}</span>
+    </div>
+  </div>
+</body>
+</html>

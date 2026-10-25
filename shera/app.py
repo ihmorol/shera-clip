@@ -492,15 +492,19 @@ def _live(call):
     return call["key"].startswith("draft:") and TASKS.get(call["key"], {}).get("state") == "running"
 
 
-def _job_page(request, job_id, error=None, status_code=200):
+def _job_page(request, job_id, error=None, status_code=200, notice=None):
     job = _job_or_404(job_id)
     short, other = _ordered(job_id)
     reviews = _reviews(job_id)
     calls = ledger.calls(job_id)
     est = pipeline.estimate(job_id) if job["stage"] == "authorize" and job["status"] == "waiting" else None
+    pending = [c for c in short if reviews.get(c["id"], {}).get("status") == "pending"]
+    ready = sum(1 for c in pending if pipeline.preview_current(reviews[c["id"]]))
     return page(request, "job.html", status_code, job=job, short=short, other=other, reviews=reviews,
-                spent=ledger.spent(job_id), est=est, error=error, stt_model=config.STT_MODEL,
+                spent=ledger.spent(job_id), est=est, error=error, notice=notice,
+                stt_model=config.STT_MODEL,
                 translate_model=config.TRANSLATE_MODEL,
+                short_pending=len(pending), short_ready=ready,
                 stuck=[c for c in calls if c["state"] == "indeterminate" or (c["state"] == "sent" and not _live(c))],
                 inflight=[c for c in calls if c["state"] == "sent" and _live(c)],
                 approved=sum(r["status"] == "approved" for r in reviews.values()))
@@ -825,6 +829,130 @@ def posted(job_id: str, cid: int, facebook_url: str = Form(""), youtube_url: str
     db.update_review(cid, posted={"facebook_url": facebook_url.strip(), "youtube_url": youtube_url.strip(),
                                   "notes": notes.strip()})
     return RedirectResponse(f"/jobs/{job_id}/export", 303)
+
+
+# ---------- infographic videos (D35–D38) ----------
+
+def _info_root(job_id):
+    return config.DATA / "exports" / job_id / "infographics"
+
+
+def _info_folder(job_id, cid):
+    return next((p for p in _info_root(job_id).glob(f"*-{cid}") if p.is_dir()), None)
+
+
+def _info_entry(job_id, c):
+    rv = db.review(c["id"])
+    folder = _info_folder(job_id, c["id"])
+    report = None
+    if folder and (folder / "report.json").exists():
+        try:
+            report = json.loads((folder / "report.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            report = None
+    has_video = bool(report) and (folder / "video.mp4").exists()
+    return {"c": c, "rv": rv, "report": report, "task": TASKS.get(f"info:{c['id']}"),
+            "video_url": _media_url(folder / "video.mp4") if has_video else None,
+            "poster_url": _media_url(folder / "poster.jpg") if has_video and (folder / "poster.jpg").exists() else None}
+
+
+def _approved(job_id):
+    """Read-only view of the approved reviews (never creates review rows as a side effect)."""
+    return {r["candidate_id"]: r for r in db.q(
+        "SELECT r.* FROM reviews r JOIN candidates c ON c.id=r.candidate_id WHERE c.job_id=? AND r.status='approved'",
+        job_id)}
+
+
+def _info_running(job_id):
+    if TASKS.get(f"infographics:{job_id}", {}).get("state") == "running":
+        return True
+    return any(TASKS.get(f"info:{c['id']}", {}).get("state") == "running" for c in db.candidates(job_id))
+
+
+@app.get("/jobs/{job_id}/infographics")
+def infographics_page(request: Request, job_id: str, error: str = "", notice: str = ""):
+    job = _job_or_404(job_id)
+    approved = _approved(job_id)
+    entries = [_info_entry(job_id, c) for c in db.candidates(job_id) if c["id"] in approved]
+    entries.sort(key=lambda e: (e["c"]["rank"] is None, e["c"]["rank"] or 0, e["c"]["start"]))
+    return page(request, "infographics.html", job=job, entries=entries, error=error, notice=notice,
+                running=_info_running(job_id), info_model=config.INFOGRAPHIC_MODEL,
+                all_task=TASKS.get(f"infographics:{job_id}", {}))
+
+
+@app.post("/jobs/{job_id}/infographics/generate")
+@app.post("/companion/jobs/{job_id}/infographics")
+def infographics_generate(job_id: str):
+    _job_or_404(job_id)
+    approved = _approved(job_id)
+    if not approved:
+        raise HTTPException(409, "Approve at least one clip first.")
+
+    def work():
+        for c in sorted(db.candidates(job_id), key=lambda x: (x["rank"] is None, x["rank"] or 0, x["start"])):
+            if c["id"] not in approved:
+                continue
+            if (_info_entry(job_id, c)["report"] or {}).get("status") == "ok":
+                continue  # already rendered; regenerating would only repeat identical work
+            TASKS[f"info:{c['id']}"] = {"state": "running", "error": None}
+            try:
+                report = pipeline.infographic(c["id"])
+                TASKS[f"info:{c['id']}"] = {"state": "done", "error": None, "report": report}
+            except Exception as e:
+                TASKS[f"info:{c['id']}"] = {"state": "error", "error": str(e) or type(e).__name__}
+
+    _bg(f"infographics:{job_id}", work)
+    return RedirectResponse(f"/jobs/{job_id}/infographics", 303)
+
+
+@app.post("/jobs/{job_id}/clips/{cid}/infographic")
+def clip_infographic(job_id: str, cid: int):
+    _job_or_404(job_id), _clip_or_404(job_id, cid)
+    rv = db.one("SELECT status FROM reviews WHERE candidate_id=?", cid)
+    if not rv or rv["status"] != "approved":
+        raise HTTPException(409, "Only approved clips get infographic videos.")
+    _bg(f"info:{cid}", lambda: pipeline.infographic(cid))
+    return RedirectResponse(f"/jobs/{job_id}/infographics", 303)
+
+
+@app.get("/jobs/{job_id}/infographics/state")
+@app.get("/companion/jobs/{job_id}/infographics/state")
+def infographics_state(job_id: str):
+    _job_or_404(job_id)
+    clips = {str(c["id"]): {k: t.get(k) for k in ("state", "error")}
+             for c in db.candidates(job_id) for t in [TASKS.get(f"info:{c['id']}")] if t}
+    return {"clips": clips, "all": TASKS.get(f"infographics:{job_id}", {})}
+
+
+# ---------- reduced manual work (D37) ----------
+
+@app.post("/jobs/{job_id}/approve-selected")
+def approve_selected(request: Request, job_id: str):
+    """One explicit action for the whole shortlist: approve every pending shortlisted clip whose phone
+    preview is current. Clips that still need a preview are left pending and counted."""
+    _job_or_404(job_id)
+    short, _ = _ordered(job_id)
+    approved = blocked = 0
+    for c in short:
+        rv = pipeline.ensure_review(c["id"])
+        if rv["status"] != "pending":
+            continue
+        if not pipeline.preview_current(rv):
+            blocked += 1
+            continue
+        db.update_review(c["id"], status="approved")
+        approved += 1
+    notice = f"Approved {approved} selected clip{'s' if approved != 1 else ''}."
+    if blocked:
+        notice += f" {blocked} still waiting for their preview to finish."
+    return _job_page(request, job_id, notice=notice)
+
+
+@app.post("/jobs/{job_id}/render-previews")
+def render_previews(job_id: str):
+    _job_or_404(job_id)
+    _bg(f"autorender:{job_id}", lambda: pipeline.render_previews(job_id))
+    return RedirectResponse(f"/jobs/{job_id}", 303)
 
 
 # ---------- media (Range-capable, confined to DATA) ----------
