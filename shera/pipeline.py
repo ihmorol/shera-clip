@@ -509,10 +509,11 @@ def render_previews(job_id):
             _autorendering.discard(job_id)
 
 
-def infographic(cid, preset="medium"):
+def infographic(cid, preset="medium", planner=None):
     """One approved clip -> one infographic video (D35–D38). Returns the clip's report; an empty
     `problems` list is the only path to status "ok". The scene plan is the only paid step (journaled,
-    capped, replayed on resume); slides and assembly render locally."""
+    capped, replayed on resume); slides and assembly render locally. planner "local" builds the plan
+    offline from the transcript alone and makes no provider call."""
     c, rv = db.candidate(cid), db.review(cid)
     if rv["status"] != "approved":
         raise ValueError("Only approved clips get infographic videos.")
@@ -522,17 +523,25 @@ def infographic(cid, preset="medium"):
         raise ValueError("The clip's transcript lines are empty; adjust the boundaries and approve again.")
     dur = rv["end"] - rv["start"]
     profile = job_profile(job_id)
+    planner = planner or ("local" if not config.openrouter_key() else "model")
 
     def plan():
         raw, cost = providers.scene_plan(lines, title=rv["title"] or "", category=rv["category"] or "",
                                          intent=profile["intent"])
         return infographics.normalize_plan(raw, len(lines), lines), cost
 
-    key = f"info:{cid}:{infographics.plan_key(lines, rv['title'], rv['category'] or '', profile['intent'])}"
-    try:
-        planned = ledger.call(job_id, key, "infographic", config.INFO_EST_USD, plan)
-    except ledger.ProviderError:  # the model ignored the contract once; one clean retry
-        planned = ledger.call(job_id, key, "infographic", config.INFO_EST_USD, plan)
+    if planner == "model":
+        key = f"info:{cid}:{infographics.plan_key(lines, rv['title'], rv['category'] or '', profile['intent'])}"
+        try:
+            planned = ledger.call(job_id, key, "infographic", config.INFO_EST_USD, plan)
+        except ledger.ProviderError:  # the model ignored the contract once; one clean retry
+            planned = ledger.call(job_id, key, "infographic", config.INFO_EST_USD, plan)
+        cost = (db.one("SELECT cost_usd FROM paid_calls WHERE job_id=? AND key=? AND state='done'",
+                       job_id, key) or {}).get("cost_usd")
+    else:
+        planned = infographics.normalize_plan(
+            infographics.local_plan(lines, rv["title"] or ""), len(lines), lines)
+        cost = None
     times = infographics.scene_times(planned["scenes"], lines, dur)
 
     root = config.DATA / "exports" / job_id / "infographics"
@@ -550,12 +559,10 @@ def infographic(cid, preset="medium"):
                                  rv["start"], dur, video, preset=preset)
         problems, extra = infographics.qc(video, dur)
         media.thumbnail(video, tmp / "poster.jpg", 0.2)
-        call = db.one("SELECT cost_usd FROM paid_calls WHERE job_id=? AND key=? AND state='done'",
-                      job_id, key)
         report = {"folder": final.name, "candidate_id": cid, "rank": c["rank"], "title": rv["title"] or "",
                   "headline": planned["headline"], "category": rv["category"] or "",
                   "duration": round(dur, 3), "scenes": len(times), "model": config.INFOGRAPHIC_MODEL,
-                  "cost_usd": call["cost_usd"] if call else None, **extra,
+                  "planner": planner, "cost_usd": cost, **extra,
                   "status": "ok" if not problems else "failed", "problems": problems}
         (tmp / "plan.json").write_text(
             json.dumps({"headline": planned["headline"], "scenes": times}, ensure_ascii=False, indent=2),

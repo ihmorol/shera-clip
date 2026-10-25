@@ -174,7 +174,12 @@ the export endpoints.
 | Assembly + QC | $0 | local ffmpeg |
 
 Ten clips cost about one Jev scoring call. The ledger treats `infographic` like every other paid kind:
-journaled before sending, replayed on resume, capped by the class authorization.
+journaled before sending, replayed on resume, capped by the class authorization. With no OpenRouter key
+configured the app falls back to the **offline planner** (`infographics.local_plan`): consecutive
+transcript lines are grouped into ~15 s scenes headed by their first spoken line, no provider is called,
+and the report records `planner: "local"` so the cheaper plans are never mistaken for model-designed
+ones. `scripts/test_infographics_offline.py` renders test videos from existing jobs with a local
+whisper transcription and the offline planner, touching no database rows and making no paid call.
 
 ## 6. Reduced manual work (D37)
 

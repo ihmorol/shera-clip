@@ -259,6 +259,7 @@ def test_scene_plan_provider_rejects_bad_shapes(monkeypatch):
 def job_env(tmp_path, monkeypatch):
     config.set_data(tmp_path / "data")
     db.init()
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")  # planner "model" is the default under test
     jid = "job1"
     db.x("INSERT INTO jobs(id, created, title, source_path, stage, status, progress, duration, authorized_usd) "
          "VALUES (?, 0, 'Class', 'x.mp4', 'review', 'done', 1, 300, 1.5)", jid)
@@ -295,6 +296,23 @@ def job_env(tmp_path, monkeypatch):
     monkeypatch.setattr(infographics, "qc", lambda v, d: ([], {"audio_peak": 900.0}))
     monkeypatch.setattr(media, "thumbnail", lambda v, out, at, width=None: out.write_bytes(b"jpg"))
     return jid, cid, calls
+
+
+def test_local_plan_groups_lines_without_a_model():
+    lines = infographics.clip_units(units(12), 0, 60)
+    norm = infographics.normalize_plan(infographics.local_plan(lines, title="T"), len(lines), lines)
+    assert norm["headline"] == "T" and len(norm["scenes"]) == 4
+    assert norm["scenes"][0]["heading"] == lines[0]["text"]
+    assert norm["scenes"][0]["bullets"] == [lines[1]["text"], lines[2]["text"]]
+    assert all(s["kind"] in ("point", "list") for s in norm["scenes"])
+
+
+def test_infographic_offline_planner_makes_no_paid_call(job_env, monkeypatch):
+    jid, cid, calls = job_env
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    report = pipeline.infographic(cid, planner="local")
+    assert report["status"] == "ok" and report["planner"] == "local" and report["cost_usd"] is None
+    assert ledger.calls(jid) == []  # nothing was journaled: no provider call happened
 
 
 def test_infographic_builds_folder_report_and_replays_the_plan(job_env):

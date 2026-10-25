@@ -96,6 +96,27 @@ def plan_key(lines, title, category="", intent=""):
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
 
+def local_plan(lines, title=""):
+    """Deterministic offline scene plan (no provider, no cost): consecutive lines are grouped into
+    ~15 s scenes; each scene is headed by its first spoken line with the rest as bullets. Every word
+    on screen comes from the transcript. Used when no OpenRouter key is configured or the operator
+    asks for the offline planner."""
+    groups, cur = [], []
+    for ln in lines:
+        cur.append(ln)
+        if ln["end"] - cur[0]["start"] >= 15.0 or len(cur) >= 4:
+            groups.append(cur)
+            cur = []
+    if cur:
+        groups.append(cur)
+    scenes = [{"u0": g[0]["i"], "u1": g[-1]["i"], "kind": "list" if len(g) > 2 else "point",
+               "heading": g[0]["text"], "bullets": [x["text"] for x in g[1:6]],
+               "emphasis": "", "note": ""} for g in groups]
+    if not scenes:
+        raise ValueError("no transcript lines to plan scenes from")
+    return {"headline": _clean(title, 120) or scenes[0]["heading"], "scenes": scenes}
+
+
 def scene_times(scenes, lines, duration):
     """Clip-relative [start, end) per scene: hard cuts with full coverage. A scene ends when its last
     line ends (short scenes are held for MIN_SCENE_S); the first starts at 0 and the last runs to the
